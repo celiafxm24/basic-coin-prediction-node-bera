@@ -80,6 +80,7 @@ def format_data(files_btc, files_eth, data_provider):
                 else:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
+                print(f"Processed BTC file {file} with {len(df)} rows")
                 price_df_btc = pd.concat([price_df_btc, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
@@ -105,6 +106,7 @@ def format_data(files_btc, files_eth, data_provider):
                 else:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
+                print(f"Processed ETH file {file} with {len(df)} rows")
                 price_df_eth = pd.concat([price_df_eth, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
@@ -112,11 +114,13 @@ def format_data(files_btc, files_eth, data_provider):
 
     if price_df_btc.empty or price_df_eth.empty:
         print("No data processed for BTCUSDT or ETHUSDT")
+        print(f"BTC DataFrame rows: {len(price_df_btc)}, ETH DataFrame rows: {len(price_df_eth)}")
         return
 
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_eth = price_df_eth.rename(columns=lambda x: f"{x}_ETHUSDT")
     price_df = pd.concat([price_df_btc, price_df_eth], axis=1)
+    print(f"Combined DataFrame rows before resampling: {len(price_df)}")
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
@@ -124,6 +128,7 @@ def format_data(files_btc, files_eth, data_provider):
             for pair in ["ETHUSDT", "BTCUSDT"] 
             for metric in ["open", "high", "low", "close"]
         })
+        print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")
 
     for pair in ["ETHUSDT", "BTCUSDT"]:
         price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
@@ -133,6 +138,8 @@ def format_data(files_btc, files_eth, data_provider):
 
     price_df["hour_of_day"] = price_df.index.hour
     price_df["target_ETHUSDT"] = price_df["price_change_ETHUSDT"]
+    print(f"Rows after adding features: {len(price_df)}")
+    print(f"Sample data before dropna:\n{price_df.tail()}")
 
     price_df = price_df.dropna()
     print(f"Total rows in price_df after preprocessing: {len(price_df)}")
