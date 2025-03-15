@@ -258,66 +258,16 @@ def train_model(timeframe, file_path=training_price_data_path):
     print(f"Training data shape: {X_train.shape}, Test data shape: {X_test.shape}")
     
     tscv = TimeSeriesSplit(n_splits=5)
-    if MODEL == "KNN":
-        print("\n🚀 Training kNN Model with Grid Search...")
-        param_grid = {
-            "n_neighbors": [25, 50, 100, 200],
-            "weights": ["uniform", "distance"],
-            "metric": ["minkowski", "manhattan"]
-        }
-        model = KNeighborsRegressor()
-        grid_search = GridSearchCV(
-            model,
-            param_grid,
-            cv=tscv,
-            scoring=make_scorer(mean_absolute_error, greater_is_better=False),
-            n_jobs=-1,
-            verbose=2
-        )
-        grid_search.fit(X_train, y_train)
-        model = grid_search.best_estimator_
-        print(f"\n✅ Best k: {model.n_neighbors}, Metric: {model.metric}, Weighting: {model.weights}")
-    elif MODEL == "LinearRegression":
-        model = LinearRegression()
-        model.fit(X_train, y_train)
-        print("\n✅ Trained LinearRegression model")
-    elif MODEL == "SVR":
-        print("\n🚀 Training SVR Model with Grid Search...")
-        param_grid = {
-            "C": [0.1, 1, 10],
-            "epsilon": [0.01, 0.1, 1],
-            "kernel": ["rbf", "linear"]
-        }
-        model = SVR()
-        grid_search = GridSearchCV(
-            model,
-            param_grid,
-            cv=tscv,
-            scoring=make_scorer(mean_absolute_error, greater_is_better=False),
-            n_jobs=-1,
-            verbose=2
-        )
-        grid_search.fit(X_train, y_train)
-        model = grid_search.best_estimator_
-        print(f"\n✅ Best C: {model.C}, Epsilon: {model.epsilon}, Kernel: {model.kernel}")
-    elif MODEL == "KernelRidge":
-        model = KernelRidge()
-        model.fit(X_train, y_train)
-        print("\n✅ Trained KernelRidge model")
-    elif MODEL == "BayesianRidge":
-        model = BayesianRidge()
-        model.fit(X_train, y_train)
-        print("\n✅ Trained BayesianRidge model")
-    elif MODEL == "XGBoost":
+    if MODEL == "XGBoost":
         print("\n🚀 Training XGBoost Model with Grid Search...")
         param_grid = {
-            'learning_rate': [0.01, 0.05, 0.1],  # Adjusted for less aggressive learning
-            'max_depth': [2, 3, 4],              # Reduced max_depth
-            'n_estimators': [50, 100],           # Reduced n_estimators
-            'subsample': [0.7, 0.8, 0.9],       # Adjusted range
-            'colsample_bytree': [0.5, 0.7],     # Added more tree sampling
-            'alpha': [10, 20],                   # Increased regularization
-            'lambda': [1, 10]                    # Added L2 regularization
+            'learning_rate': [0.01, 0.02, 0.05],  # Added 0.02
+            'max_depth': [2, 3],                  # Added 3
+            'n_estimators': [50, 75, 100],        # Added 75
+            'subsample': [0.7, 0.8, 0.9],
+            'colsample_bytree': [0.5, 0.7],
+            'alpha': [10, 20],
+            'lambda': [1, 10]
         }
         model = xgb.XGBRegressor(objective="reg:squarederror")
         grid_search = GridSearchCV(
