@@ -51,9 +51,6 @@ def format_data(files_btc, files_eth, data_provider):
         files_eth = sorted([f for f in files_eth if "ETHUSDT" in os.path.basename(f) and f.endswith(".zip")])
         print(f"Filtered BTCUSDT files: {files_btc[:5]}")
         print(f"Filtered ETHUSDT files: {files_eth[:5]}")
-    elif data_provider == "coingecko":
-        files_btc = sorted([x for x in files_btc if x.endswith(".json")])
-        files_eth = sorted([x for x in files_eth if x.endswith(".json")])
 
     if len(files_btc) == 0 or len(files_eth) == 0:
         print("No valid files to process for BTCUSDT or ETHUSDT after filtering")
@@ -76,11 +73,11 @@ def format_data(files_btc, files_eth, data_provider):
                 df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
                 df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                 max_time = df["end_time"].max()
-                if max_time > 1e15:  # Nanoseconds
+                if max_time > 1e15:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ns")
-                elif max_time > 1e12:  # Microseconds
+                elif max_time > 1e12:
                     df["date"] = pd.to_datetime(df["end_time"], unit="us")
-                else:  # Milliseconds
+                else:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
                 price_df_btc = pd.concat([price_df_btc, df])
@@ -101,11 +98,11 @@ def format_data(files_btc, files_eth, data_provider):
                 df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
                 df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                 max_time = df["end_time"].max()
-                if max_time > 1e15:  # Nanoseconds
+                if max_time > 1e15:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ns")
-                elif max_time > 1e12:  # Microseconds
+                elif max_time > 1e12:
                     df["date"] = pd.to_datetime(df["end_time"], unit="us")
-                else:  # Milliseconds
+                else:
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
                 price_df_eth = pd.concat([price_df_eth, df])
@@ -121,7 +118,6 @@ def format_data(files_btc, files_eth, data_provider):
     price_df_eth = price_df_eth.rename(columns=lambda x: f"{x}_ETHUSDT")
     price_df = pd.concat([price_df_btc, price_df_eth], axis=1)
 
-    # Resample to TIMEFRAME
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
             f"{metric}_{pair}": "last" 
@@ -129,9 +125,8 @@ def format_data(files_btc, files_eth, data_provider):
             for metric in ["open", "high", "low", "close"]
         })
 
-    # Feature engineering for ETH 6h price prediction
     for pair in ["ETHUSDT", "BTCUSDT"]:
-        price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]  # Next 6h period
+        price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
@@ -142,13 +137,23 @@ def format_data(files_btc, files_eth, data_provider):
     price_df = price_df.dropna()
     print(f"Total rows in price_df after preprocessing: {len(price_df)}")
     print(f"First few dates in price_df: {price_df.index[:5].tolist()}")
+    
+    if len(price_df) == 0:
+        print("No data remains after preprocessing. Check data availability or timeframe.")
+        return
 
     price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
     print(f"Data saved to {training_price_data_path}")
 
 def load_frame(file_path, timeframe):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Training data file {file_path} does not exist. Run data update first.")
+    
     print(f"Loading data from {file_path}...")
     df = pd.read_csv(file_path, index_col='date', parse_dates=True)
+    if df.empty:
+        raise ValueError(f"Training data file {file_path} is empty.")
+    
     df.ffill(inplace=True)
     df.bfill(inplace=True)
     
@@ -166,10 +171,16 @@ def load_frame(file_path, timeframe):
     X = df[features]
     y = df["target_ETHUSDT"]
     
+    if len(X) == 0:
+        raise ValueError("No samples available after loading data.")
+    
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
     split_idx = int(len(X) * 0.8)
+    if split_idx == 0:
+        raise ValueError("Not enough data to split into train and test sets.")
+    
     X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
     
