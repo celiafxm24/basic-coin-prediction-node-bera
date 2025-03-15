@@ -1,4 +1,5 @@
 import json
+import os  # Added import
 from flask import Flask, Response
 from model import download_data, format_data, train_model, get_inference
 from config import model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
