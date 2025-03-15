@@ -1,8 +1,9 @@
 import json
 import os
+import time
 from flask import Flask, Response
 from model import download_data, format_data, train_model, get_inference
-from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER  # Added scaler_file_path
+from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
 
 app = Flask(__name__)
 
@@ -22,13 +23,18 @@ def update_data():
                 os.remove(path)
             print(f"Cleared {path}")
     
+    print("Downloading BTC data...")
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
+    print("Downloading ETH data...")
     files_eth = download_data("ETH", TRAINING_DAYS, REGION, DATA_PROVIDER)
     if not files_btc or not files_eth:
         print("No data files downloaded. Skipping format_data and training.")
         return
+    print("Formatting data...")
     format_data(files_btc, files_eth, DATA_PROVIDER)
+    print("Training model...")
     train_model(TIMEFRAME)
+    print("Data update and training completed.")
 
 @app.route("/inference/<string:token>")
 def generate_inference(token):
@@ -54,4 +60,9 @@ def update():
 
 if __name__ == "__main__":
     update_data()
+    # Wait briefly to ensure training completes before starting Flask
+    while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
+        print("Waiting for model and scaler files to be generated...")
+        time.sleep(5)
+    print("Starting Flask server...")
     app.run(host="0.0.0.0", port=8000)
