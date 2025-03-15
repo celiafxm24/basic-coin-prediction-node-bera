@@ -72,8 +72,8 @@ def format_data(files_btc, files_eth, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')  # Coerce invalid timestamps to NaT
-                    df = df.dropna(subset=["date"])  # Drop rows with invalid timestamps
+                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
+                    df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
@@ -94,8 +94,8 @@ def format_data(files_btc, files_eth, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')  # Coerce invalid timestamps to NaT
-                    df = df.dropna(subset=["date"])  # Drop rows with invalid timestamps
+                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
+                    df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
@@ -311,12 +311,13 @@ def train_model(timeframe, file_path=training_price_data_path):
     elif MODEL == "XGBoost":
         print("\n🚀 Training XGBoost Model with Grid Search...")
         param_grid = {
-            'learning_rate': [0.05, 0.1, 0.2],
-            'max_depth': [3, 5, 7],
-            'n_estimators': [100, 200],
-            'subsample': [0.7, 0.8, 1.0],
-            'colsample_bytree': [0.3, 0.5],
-            'alpha': [0, 1, 10]
+            'learning_rate': [0.01, 0.05, 0.1],  # Adjusted for less aggressive learning
+            'max_depth': [2, 3, 4],              # Reduced max_depth
+            'n_estimators': [50, 100],           # Reduced n_estimators
+            'subsample': [0.7, 0.8, 0.9],       # Adjusted range
+            'colsample_bytree': [0.5, 0.7],     # Added more tree sampling
+            'alpha': [10, 20],                   # Increased regularization
+            'lambda': [1, 10]                    # Added L2 regularization
         }
         model = xgb.XGBRegressor(objective="reg:squarederror")
         grid_search = GridSearchCV(
@@ -378,7 +379,7 @@ def get_inference(token, timeframe, region, data_provider):
     
     X_new = preprocess_live_data(df_btc, df_eth)
     print("Inference input data shape:", X_new.shape)
-    price_change_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]  # Use latest row
+    price_change_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]
     predicted_price = latest_price + price_change_pred
     print(f"Predicted 6h ETH/USD Price Change: {price_change_pred:.6f}")
     print(f"Latest ETH Price: {latest_price:.2f}")
