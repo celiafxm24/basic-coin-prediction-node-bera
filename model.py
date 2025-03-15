@@ -358,10 +358,15 @@ def get_inference(token, timeframe, region, data_provider):
         df_btc = download_binance_current_day_data("BTCUSDT", region)
         df_eth = download_binance_current_day_data("ETHUSDT", region)
     
+    # Fetch current price separately
+    ticker_url = f'https://api.binance.{region}/api/v3/ticker/price?symbol=ETHUSDT'
+    response = requests.get(ticker_url)
+    response.raise_for_status()
+    latest_price = float(response.json()['price'])
+    
     X_new = preprocess_live_data(df_btc, df_eth)
     print("Inference input data shape:", X_new.shape)
     price_change_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]  # Use latest row
-    latest_price = df_eth["close"].iloc[-1]
     predicted_price = latest_price + price_change_pred
     print(f"Predicted 6h ETH/USD Price Change: {price_change_pred:.6f}")
     print(f"Latest ETH Price: {latest_price:.2f}")
