@@ -4,6 +4,7 @@ import pickle
 from zipfile import ZipFile
 import pandas as pd
 import numpy as np
+import requests  # Added import
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
@@ -119,7 +120,7 @@ def format_data(files_btc, files_eth, data_provider):
     for pair in ["ETHUSDT", "BTCUSDT"]:
         price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 11):  # Updated to 10 lags
+            for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
     price_df["hour_of_day"] = price_df.index.hour
@@ -154,7 +155,7 @@ def load_frame(file_path, timeframe):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 11)  # Updated to 10 lags
+        for lag in range(1, 11)
     ] + ["hour_of_day"]
     
     missing_features = [f for f in features if f not in df.columns]
@@ -209,7 +210,7 @@ def preprocess_live_data(df_btc, df_eth):
 
     for pair in ["ETHUSDT", "BTCUSDT"]:
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 11):  # Updated to 10 lags
+            for lag in range(1, 11):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
     df["hour_of_day"] = df.index.hour
@@ -225,7 +226,7 @@ def preprocess_live_data(df_btc, df_eth):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 11)  # Updated to 10 lags
+        for lag in range(1, 11)
     ] + ["hour_of_day"]
     
     X = df[features]
