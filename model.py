@@ -11,6 +11,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, m
 from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.svm import SVR
 from sklearn.kernel_ridge import KernelRidge
+import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
 from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL
 
@@ -75,7 +76,6 @@ def format_data(files_btc, files_eth, data_provider):
                 df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
                 df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                 max_time = df["end_time"].max()
-                print(f"Sample end_time values from {file}: {df['end_time'].head().tolist()}")
                 if max_time > 1e15:  # Nanoseconds
                     df["date"] = pd.to_datetime(df["end_time"], unit="ns")
                 elif max_time > 1e12:  # Microseconds
@@ -83,7 +83,6 @@ def format_data(files_btc, files_eth, data_provider):
                 else:  # Milliseconds
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
-                print(f"Processed {file} with {len(df)} rows")
                 price_df_btc = pd.concat([price_df_btc, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
@@ -102,7 +101,6 @@ def format_data(files_btc, files_eth, data_provider):
                 df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
                 df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                 max_time = df["end_time"].max()
-                print(f"Sample end_time values from {file}: {df['end_time'].head().tolist()}")
                 if max_time > 1e15:  # Nanoseconds
                     df["date"] = pd.to_datetime(df["end_time"], unit="ns")
                 elif max_time > 1e12:  # Microseconds
@@ -110,7 +108,6 @@ def format_data(files_btc, files_eth, data_provider):
                 else:  # Milliseconds
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                 df.set_index("date", inplace=True)
-                print(f"Processed {file} with {len(df)} rows")
                 price_df_eth = pd.concat([price_df_eth, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
@@ -124,17 +121,23 @@ def format_data(files_btc, files_eth, data_provider):
     price_df_eth = price_df_eth.rename(columns=lambda x: f"{x}_ETHUSDT")
     price_df = pd.concat([price_df_btc, price_df_eth], axis=1)
 
-    # Feature engineering for volatility prediction
+    # Resample to TIMEFRAME
+    if TIMEFRAME != "1m":
+        price_df = price_df.resample(TIMEFRAME).agg({
+            f"{metric}_{pair}": "last" 
+            for pair in ["ETHUSDT", "BTCUSDT"] 
+            for metric in ["open", "high", "low", "close"]
+        })
+
+    # Feature engineering for ETH 6h price prediction
     for pair in ["ETHUSDT", "BTCUSDT"]:
-        price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
-        price_df[f"volatility_6h_{pair}"] = price_df[f"log_return_{pair}"].rolling(window=360).std() * np.sqrt(360)
-        for metric in ["close", "volume", "log_return"]:
+        price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]  # Next 6h period
+        for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
-        price_df[f"volatility_6h_{pair}_lag1"] = price_df[f"volatility_6h_{pair}"].shift(1)
 
     price_df["hour_of_day"] = price_df.index.hour
-    price_df["target_BTCUSDT"] = price_df["volatility_6h_BTCUSDT"]
+    price_df["target_ETHUSDT"] = price_df["price_change_ETHUSDT"]
 
     price_df = price_df.dropna()
     print(f"Total rows in price_df after preprocessing: {len(price_df)}")
@@ -152,23 +155,23 @@ def load_frame(file_path, timeframe):
     features = [
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
-        for metric in ["close", "volume", "log_return"]
+        for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + [f"volatility_6h_{pair}_lag1" for pair in ["ETHUSDT", "BTCUSDT"]] + ["hour_of_day"]
+    ] + ["hour_of_day"]
     
     missing_features = [f for f in features if f not in df.columns]
     if missing_features:
         raise ValueError(f"Missing features in data: {missing_features}")
     
     X = df[features]
-    y = df["target_BTCUSDT"]
+    y = df["target_ETHUSDT"]
     
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
     split_idx = int(len(X) * 0.8)
     X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
-    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]  # Fixed syntax error
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
     
     print(f"Loaded {len(df)} rows, resampled to {timeframe}")
     return X_train, X_test, y_train, y_test, scaler
@@ -183,15 +186,19 @@ def preprocess_live_data(df_btc, df_eth):
     df_eth = df_eth.rename(columns=lambda x: f"{x}_ETHUSDT" if x != "date" else x)
     
     df = pd.concat([df_btc, df_eth], axis=1)
-    print(f"Live data sample (raw):\n{df.tail()}")
+    
+    if TIMEFRAME != "1m":
+        df = df.resample(TIMEFRAME).agg({
+            f"{metric}_{pair}": "last" 
+            for pair in ["ETHUSDT", "BTCUSDT"] 
+            for metric in ["open", "high", "low", "close"]
+        })
     
     for pair in ["ETHUSDT", "BTCUSDT"]:
-        df[f"log_return_{pair}"] = np.log(df[f"close_{pair}"].shift(-1) / df[f"close_{pair}"])
-        df[f"volatility_6h_{pair}"] = df[f"log_return_{pair}"].rolling(window=360).std() * np.sqrt(360)
-        for metric in ["close", "volume", "log_return"]:
+        df[f"price_change_{pair}"] = df[f"close_{pair}"].shift(-1) - df[f"close_{pair}"]
+        for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
-        df[f"volatility_6h_{pair}_lag1"] = df[f"volatility_6h_{pair}"].shift(1)
 
     df["hour_of_day"] = df.index.hour
     
@@ -201,9 +208,9 @@ def preprocess_live_data(df_btc, df_eth):
     features = [
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
-        for metric in ["close", "volume", "log_return"]
+        for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + [f"volatility_6h_{pair}_lag1" for pair in ["ETHUSDT", "BTCUSDT"]] + ["hour_of_day"]
+    ] + ["hour_of_day"]
     
     X = df[features]
     
@@ -224,7 +231,7 @@ def train_model(timeframe, file_path=training_price_data_path):
     if MODEL == "KNN":
         print("\n🚀 Training kNN Model with Grid Search...")
         param_grid = {
-            "n_neighbors": [25, 50, 100, 200],  # Adjusted range
+            "n_neighbors": [25, 50, 100, 200],
             "weights": ["uniform", "distance"],
             "metric": ["minkowski", "manhattan"]
         }
@@ -271,6 +278,28 @@ def train_model(timeframe, file_path=training_price_data_path):
         model = BayesianRidge()
         model.fit(X_train, y_train)
         print("\n✅ Trained BayesianRidge model")
+    elif MODEL == "XGBoost":
+        print("\n🚀 Training XGBoost Model with Grid Search...")
+        param_grid = {
+            'learning_rate': [0.05, 0.1, 0.2],
+            'max_depth': [3, 5, 7],
+            'n_estimators': [100, 200],
+            'subsample': [0.7, 0.8, 1.0],
+            'colsample_bytree': [0.3, 0.5],
+            'alpha': [0, 1, 10]
+        }
+        model = xgb.XGBRegressor(objective="reg:squarederror")
+        grid_search = GridSearchCV(
+            estimator=model,
+            param_grid=param_grid,
+            cv=tscv,
+            scoring=make_scorer(mean_absolute_error, greater_is_better=False),
+            n_jobs=-1,
+            verbose=2
+        )
+        grid_search.fit(X_train, y_train)
+        model = grid_search.best_estimator_
+        print(f"\n✅ Best Hyperparameters: {grid_search.best_params_}")
     else:
         raise ValueError(f"Unsupported model: {MODEL}")
     
@@ -313,6 +342,10 @@ def get_inference(token, timeframe, region, data_provider):
     
     X_new = preprocess_live_data(df_btc, df_eth)
     print("Inference input data shape:", X_new.shape)
-    volatility_pred = loaded_model.predict(X_new)[0]
-    print(f"Predicted 6h BTC/USD Volatility: {volatility_pred:.6f}")
-    return volatility_pred
+    price_change_pred = loaded_model.predict(X_new)[0]
+    latest_price = df_eth["close"].iloc[-1]
+    predicted_price = latest_price + price_change_pred
+    print(f"Predicted 6h ETH/USD Price Change: {price_change_pred:.6f}")
+    print(f"Latest ETH Price: {latest_price:.2f}")
+    print(f"Predicted ETH Price in 6h: {predicted_price:.2f}")
+    return predicted_price
