@@ -21,6 +21,8 @@ def generate_inference(token):
         error_msg = "Token is required" if not token else f"Token {token} not supported, expected {TOKEN}"
         return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
     try:
+        if not os.path.exists(model_file_path):
+            raise FileNotFoundError("Model file not found. Please run update first to train the model.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
         return Response(str(inference), status=200, mimetype='text/plain')
     except Exception as e:
