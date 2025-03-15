@@ -15,11 +15,11 @@ def update_data():
 @app.route("/inference/<string:token>")
 def generate_inference(token):
     if not token or token.upper() != TOKEN:
-        error_msg = "Token is required" if not token else "Token not supported"
+        error_msg = "Token is required" if not token else f"Token {token} not supported, expected {TOKEN}"
         return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
     try:
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        return Response(str(inference), status=200)
+        return Response(str(inference), status=200, mimetype='text/plain')  # Plain text for Allora compatibility
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
 
