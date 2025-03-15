@@ -56,7 +56,7 @@ def daterange(start_date, end_date):
 
 def download_binance_daily_data(pair, training_days, region, download_path):
     base_url = f"https://data.binance.vision/data/spot/daily/klines"
-    end_date = date.today()
+    end_date = date.today() - timedelta(days=1)
     start_date = end_date - timedelta(days=int(training_days))
     print(f"Downloading {pair} data from {start_date} to {end_date}")
     
@@ -71,15 +71,15 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     return files
 
 def download_binance_current_day_data(pair, region):
-    limit = 1000
+    limit = 10080  # 7 days of 1-minute data (7 * 1440)
     base_url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}'
-    print(f"Fetching current day data from: {base_url}")
+    print(f"Fetching current data from: {base_url}")
     response = session.get(base_url)
     response.raise_for_status()
     resp = str(response.content, 'utf-8').rstrip()
     columns = ['start_time','open','high','low','close','volume','end_time','volume_usd','n_trades','taker_volume','taker_volume_usd','ignore']
-    df = pd.DataFrame(json.loads(resp),columns=columns)
-    df['date'] = [pd.to_datetime(x+1,unit='ms') for x in df['end_time']]
+    df = pd.DataFrame(json.loads(resp), columns=columns)
+    df['date'] = [pd.to_datetime(x+1, unit='ms') for x in df['end_time']]
     df['date'] = df['date'].apply(pd.to_datetime)
     df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
     return df.sort_index()
@@ -134,7 +134,7 @@ def download_coingecko_current_day_data(token, CG_API_KEY):
     resp = str(response.content, 'utf-8').rstrip()
     columns = ['timestamp','open','high','low','close']
     df = pd.DataFrame(json.loads(resp), columns=columns)
-    df['date'] = [pd.to_datetime(x,unit='ms') for x in df['timestamp']]
+    df['date'] = [pd.to_datetime(x, unit='ms') for x in df['timestamp']]
     df['date'] = df['date'].apply(pd.to_datetime)
     df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].apply(pd.to_numeric)
     return df.sort_index()
