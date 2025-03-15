@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.model_selection import TimeSeriesSplit, GridSearchCV  # Fixed typo here
+from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, make_scorer
 from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.svm import SVR
@@ -70,7 +70,6 @@ def format_data(files_btc, files_eth, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    # Assume milliseconds for Binance data
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
                     df.set_index("date", inplace=True)
                     print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
@@ -119,7 +118,6 @@ def format_data(files_btc, files_eth, data_provider):
 
     for pair in ["ETHUSDT", "BTCUSDT"]:
         price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
-        # Reduce lags to 5 to preserve more data
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 6):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
@@ -156,7 +154,7 @@ def load_frame(file_path, timeframe):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 6)  # Reduced to 5 lags
+        for lag in range(1, 6)
     ] + ["hour_of_day"]
     
     missing_features = [f for f in features if f not in df.columns]
@@ -192,6 +190,8 @@ def preprocess_live_data(df_btc, df_eth):
     df_eth = df_eth.rename(columns=lambda x: f"{x}_ETHUSDT" if x != "date" else x)
     
     df = pd.concat([df_btc, df_eth], axis=1)
+    print(f"Raw live data rows: {len(df)}")
+    print(f"Sample raw live dates: {df.index[:5].tolist()}")
     
     if TIMEFRAME != "1m":
         df = df.resample(TIMEFRAME).agg({
@@ -199,16 +199,19 @@ def preprocess_live_data(df_btc, df_eth):
             for pair in ["ETHUSDT", "BTCUSDT"] 
             for metric in ["open", "high", "low", "close"]
         })
-    
+        print(f"Rows after resampling to {TIMEFRAME}: {len(df)}")
+        print(f"Sample resampled dates: {df.index[:5].tolist()}")
+
+    # Use only past data for inference, no future shift
     for pair in ["ETHUSDT", "BTCUSDT"]:
-        df[f"price_change_{pair}"] = df[f"close_{pair}"].shift(-1) - df[f"close_{pair}"]
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 6):  # Reduced to 5 lags
+            for lag in range(1, 6):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
     df["hour_of_day"] = df.index.hour
     
     df = df.dropna()
+    print(f"Live data after preprocessing rows: {len(df)}")
     print(f"Live data after preprocessing:\n{df.tail()}")
     
     features = [
@@ -219,6 +222,8 @@ def preprocess_live_data(df_btc, df_eth):
     ] + ["hour_of_day"]
     
     X = df[features]
+    if len(X) == 0:
+        raise ValueError("No valid data after preprocessing live data.")
     
     with open(scaler_file_path, "rb") as f:
         scaler = pickle.load(f)
@@ -348,7 +353,7 @@ def get_inference(token, timeframe, region, data_provider):
     
     X_new = preprocess_live_data(df_btc, df_eth)
     print("Inference input data shape:", X_new.shape)
-    price_change_pred = loaded_model.predict(X_new)[0]
+    price_change_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]  # Use latest row
     latest_price = df_eth["close"].iloc[-1]
     predicted_price = latest_price + price_change_pred
     print(f"Predicted 6h ETH/USD Price Change: {price_change_pred:.6f}")
