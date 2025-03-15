@@ -9,6 +9,9 @@ def update_data():
     print("Starting data update process...")
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
     files_eth = download_data("ETH", TRAINING_DAYS, REGION, DATA_PROVIDER)
+    if not files_btc or not files_eth:
+        print("No data files downloaded. Skipping format_data and training.")
+        return
     format_data(files_btc, files_eth, DATA_PROVIDER)
     train_model(TIMEFRAME)
 
@@ -19,7 +22,7 @@ def generate_inference(token):
         return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
     try:
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        return Response(str(inference), status=200, mimetype='text/plain')  # Plain text for Allora compatibility
+        return Response(str(inference), status=200, mimetype='text/plain')
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
 
