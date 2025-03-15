@@ -1,11 +1,10 @@
-# XGB is working but need to optimize
 import json
 import os
 import pickle
 from zipfile import ZipFile
 import pandas as pd
 import numpy as np
-import requests  # Added import
+import requests
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
@@ -60,6 +59,7 @@ def format_data(files_btc, files_eth, data_provider):
 
     price_df_btc = pd.DataFrame()
     price_df_eth = pd.DataFrame()
+    skipped_files = []
 
     if data_provider == "binance":
         for file in files_btc:
@@ -72,12 +72,16 @@ def format_data(files_btc, files_eth, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms")
+                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')  # Coerce invalid timestamps to NaT
+                    df = df.dropna(subset=["date"])  # Drop rows with invalid timestamps
+                    if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
+                        raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     price_df_btc = pd.concat([price_df_btc, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
+                skipped_files.append(file)
                 continue
 
         for file in files_eth:
@@ -90,12 +94,16 @@ def format_data(files_btc, files_eth, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms")
+                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')  # Coerce invalid timestamps to NaT
+                    df = df.dropna(subset=["date"])  # Drop rows with invalid timestamps
+                    if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
+                        raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed ETH file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     price_df_eth = pd.concat([price_df_eth, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
+                skipped_files.append(file)
                 continue
 
     if price_df_btc.empty or price_df_eth.empty:
@@ -103,6 +111,8 @@ def format_data(files_btc, files_eth, data_provider):
         print(f"BTC DataFrame rows: {len(price_df_btc)}, ETH DataFrame rows: {len(price_df_eth)}")
         return
 
+    print(f"Skipped files due to errors: {skipped_files}")
+    
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_eth = price_df_eth.rename(columns=lambda x: f"{x}_ETHUSDT")
     price_df = pd.concat([price_df_btc, price_df_eth], axis=1)
