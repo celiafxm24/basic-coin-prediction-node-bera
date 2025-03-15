@@ -119,7 +119,7 @@ def format_data(files_btc, files_eth, data_provider):
     for pair in ["ETHUSDT", "BTCUSDT"]:
         price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 6):
+            for lag in range(1, 11):  # Updated to 10 lags
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
     price_df["hour_of_day"] = price_df.index.hour
@@ -154,7 +154,7 @@ def load_frame(file_path, timeframe):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 6)
+        for lag in range(1, 11)  # Updated to 10 lags
     ] + ["hour_of_day"]
     
     missing_features = [f for f in features if f not in df.columns]
@@ -181,6 +181,9 @@ def load_frame(file_path, timeframe):
     return X_train, X_test, y_train, y_test, scaler
 
 def preprocess_live_data(df_btc, df_eth):
+    print(f"BTC raw data rows: {len(df_btc)}, columns: {df_btc.columns.tolist()}")
+    print(f"ETH raw data rows: {len(df_eth)}, columns: {df_eth.columns.tolist()}")
+
     if "date" in df_btc.columns:
         df_btc.set_index("date", inplace=True)
     if "date" in df_eth.columns:
@@ -191,8 +194,10 @@ def preprocess_live_data(df_btc, df_eth):
     
     df = pd.concat([df_btc, df_eth], axis=1)
     print(f"Raw live data rows: {len(df)}")
+    print(f"Raw live data columns: {df.columns.tolist()}")
     print(f"Sample raw live dates: {df.index[:5].tolist()}")
-    
+    print(f"Sample raw live data:\n{df.head()}")
+
     if TIMEFRAME != "1m":
         df = df.resample(TIMEFRAME).agg({
             f"{metric}_{pair}": "last" 
@@ -202,23 +207,25 @@ def preprocess_live_data(df_btc, df_eth):
         print(f"Rows after resampling to {TIMEFRAME}: {len(df)}")
         print(f"Sample resampled dates: {df.index[:5].tolist()}")
 
-    # Use only past data for inference, no future shift
     for pair in ["ETHUSDT", "BTCUSDT"]:
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 6):
+            for lag in range(1, 11):  # Updated to 10 lags
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
     df["hour_of_day"] = df.index.hour
     
+    print(f"Rows after adding features: {len(df)}")
+    print(f"Sample data with features:\n{df.tail()}")
+
     df = df.dropna()
     print(f"Live data after preprocessing rows: {len(df)}")
     print(f"Live data after preprocessing:\n{df.tail()}")
-    
+
     features = [
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 6)
+        for lag in range(1, 11)  # Updated to 10 lags
     ] + ["hour_of_day"]
     
     X = df[features]
