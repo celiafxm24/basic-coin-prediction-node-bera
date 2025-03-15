@@ -71,18 +71,30 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     return files
 
 def download_binance_current_day_data(pair, region):
-    limit = 10080  # 7 days of 1-minute data (7 * 1440)
-    base_url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}'
-    print(f"Fetching current data from: {base_url}")
-    response = session.get(base_url)
-    response.raise_for_status()
-    resp = str(response.content, 'utf-8').rstrip()
-    columns = ['start_time','open','high','low','close','volume','end_time','volume_usd','n_trades','taker_volume','taker_volume_usd','ignore']
-    df = pd.DataFrame(json.loads(resp), columns=columns)
-    df['date'] = [pd.to_datetime(x+1, unit='ms') for x in df['end_time']]
-    df['date'] = df['date'].apply(pd.to_datetime)
-    df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
-    return df.sort_index()
+    limit = 1000  # Max per request
+    total_minutes = 10080  # 7 days
+    requests_needed = (total_minutes + limit - 1) // limit  # Ceiling division
+    dfs = []
+    end_time = int(time.time() * 1000)  # Current time in ms
+    
+    for i in range(requests_needed):
+        start_time = end_time - (limit * 60 * 1000)  # Move back 1000 minutes per request
+        url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}&endTime={end_time}'
+        print(f"Fetching {pair} data batch {i+1}/{requests_needed} from: {url}")
+        response = session.get(url)
+        response.raise_for_status()
+        resp = str(response.content, 'utf-8').rstrip()
+        columns = ['start_time', 'open', 'high', 'low', 'close', 'volume', 'end_time', 'volume_usd', 'n_trades', 'taker_volume', 'taker_volume_usd', 'ignore']
+        df = pd.DataFrame(json.loads(resp), columns=columns)
+        df['date'] = [pd.to_datetime(x+1, unit='ms') for x in df['end_time']]
+        df['date'] = df['date'].apply(pd.to_datetime)
+        df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
+        dfs.append(df)
+        end_time = int(df['end_time'].iloc[0]) - 1  # Set next end time to just before the earliest in this batch
+    
+    combined_df = pd.concat(dfs).sort_index()
+    print(f"Total {pair} live data rows fetched: {len(combined_df)}")
+    return combined_df
 
 def get_coingecko_coin_id(token):
     token_map = {
@@ -132,7 +144,7 @@ def download_coingecko_current_day_data(token, CG_API_KEY):
     response = session.get(url)
     response.raise_for_status()
     resp = str(response.content, 'utf-8').rstrip()
-    columns = ['timestamp','open','high','low','close']
+    columns = ['timestamp', 'open', 'high', 'low', 'close']
     df = pd.DataFrame(json.loads(resp), columns=columns)
     df['date'] = [pd.to_datetime(x, unit='ms') for x in df['timestamp']]
     df['date'] = df['date'].apply(pd.to_datetime)
