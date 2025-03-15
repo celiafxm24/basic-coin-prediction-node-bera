@@ -1,4 +1,3 @@
-# XGB optimzed
 import json
 import os
 import pickle
