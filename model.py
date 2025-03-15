@@ -261,9 +261,9 @@ def train_model(timeframe, file_path=training_price_data_path):
     if MODEL == "XGBoost":
         print("\n🚀 Training XGBoost Model with Grid Search...")
         param_grid = {
-            'learning_rate': [0.01, 0.02, 0.05],  # Added 0.02
-            'max_depth': [2, 3],                  # Added 3
-            'n_estimators': [50, 75, 100],        # Added 75
+            'learning_rate': [0.01, 0.02, 0.05],
+            'max_depth': [2, 3],                  # Adjusted
+            'n_estimators': [50, 75, 100],        # Adjusted
             'subsample': [0.7, 0.8, 0.9],
             'colsample_bytree': [0.5, 0.7],
             'alpha': [10, 20],
