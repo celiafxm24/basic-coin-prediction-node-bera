@@ -8,14 +8,19 @@ app = Flask(__name__)
 
 def update_data():
     print("Starting data update process...")
-    # Clear existing data to force refresh
+    # Clear all data to force refresh
     data_dir = os.path.join(os.getcwd(), "data", "binance")
     price_data_file = os.path.join(os.getcwd(), "data", "price_data.csv")
-    if os.path.exists(data_dir):
-        for f in os.listdir(data_dir):
-            os.remove(os.path.join(data_dir, f))
-    if os.path.exists(price_data_file):
-        os.remove(price_data_file)
+    model_file = model_file_path
+    scaler_file = scaler_file_path
+    for path in [data_dir, price_data_file, model_file, scaler_file]:
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                for f in os.listdir(path):
+                    os.remove(os.path.join(path, f))
+            else:
+                os.remove(path)
+            print(f"Cleared {path}")
     
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
     files_eth = download_data("ETH", TRAINING_DAYS, REGION, DATA_PROVIDER)
