@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
+from sklearn.model_model import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, make_scorer
 from sklearn.linear_model import LinearRegression, BayesianRidge
 from sklearn.svm import SVR
@@ -68,20 +68,13 @@ def format_data(files_btc, files_eth, data_provider):
             try:
                 myzip = ZipFile(zip_file_path)
                 with myzip.open(myzip.filelist[0]) as f:
-                    line = f.readline()
-                    header = 0 if line.decode("utf-8").startswith("open_time") else None
-                df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
-                df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                max_time = df["end_time"].max()
-                if max_time > 1e15:
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ns")
-                elif max_time > 1e12:
-                    df["date"] = pd.to_datetime(df["end_time"], unit="us")
-                else:
+                    df = pd.read_csv(f, header=None).iloc[:, :11]
+                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
+                    # Assume milliseconds for Binance data
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
-                df.set_index("date", inplace=True)
-                print(f"Processed BTC file {file} with {len(df)} rows")
-                price_df_btc = pd.concat([price_df_btc, df])
+                    df.set_index("date", inplace=True)
+                    print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
+                    price_df_btc = pd.concat([price_df_btc, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
                 continue
@@ -94,20 +87,12 @@ def format_data(files_btc, files_eth, data_provider):
             try:
                 myzip = ZipFile(zip_file_path)
                 with myzip.open(myzip.filelist[0]) as f:
-                    line = f.readline()
-                    header = 0 if line.decode("utf-8").startswith("open_time") else None
-                df = pd.read_csv(myzip.open(myzip.filelist[0]), header=header).iloc[:, :11]
-                df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                max_time = df["end_time"].max()
-                if max_time > 1e15:
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ns")
-                elif max_time > 1e12:
-                    df["date"] = pd.to_datetime(df["end_time"], unit="us")
-                else:
+                    df = pd.read_csv(f, header=None).iloc[:, :11]
+                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms")
-                df.set_index("date", inplace=True)
-                print(f"Processed ETH file {file} with {len(df)} rows")
-                price_df_eth = pd.concat([price_df_eth, df])
+                    df.set_index("date", inplace=True)
+                    print(f"Processed ETH file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
+                    price_df_eth = pd.concat([price_df_eth, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
                 continue
@@ -121,6 +106,7 @@ def format_data(files_btc, files_eth, data_provider):
     price_df_eth = price_df_eth.rename(columns=lambda x: f"{x}_ETHUSDT")
     price_df = pd.concat([price_df_btc, price_df_eth], axis=1)
     print(f"Combined DataFrame rows before resampling: {len(price_df)}")
+    print(f"Sample combined dates: {price_df.index[:5].tolist()}")
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
@@ -129,11 +115,13 @@ def format_data(files_btc, files_eth, data_provider):
             for metric in ["open", "high", "low", "close"]
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")
+        print(f"Sample resampled dates: {price_df.index[:5].tolist()}")
 
     for pair in ["ETHUSDT", "BTCUSDT"]:
         price_df[f"price_change_{pair}"] = price_df[f"close_{pair}"].shift(-1) - price_df[f"close_{pair}"]
+        # Reduce lags to 5 to preserve more data
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 11):
+            for lag in range(1, 6):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
     price_df["hour_of_day"] = price_df.index.hour
@@ -168,7 +156,7 @@ def load_frame(file_path, timeframe):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 11)
+        for lag in range(1, 6)  # Reduced to 5 lags
     ] + ["hour_of_day"]
     
     missing_features = [f for f in features if f not in df.columns]
@@ -215,7 +203,7 @@ def preprocess_live_data(df_btc, df_eth):
     for pair in ["ETHUSDT", "BTCUSDT"]:
         df[f"price_change_{pair}"] = df[f"close_{pair}"].shift(-1) - df[f"close_{pair}"]
         for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 11):
+            for lag in range(1, 6):  # Reduced to 5 lags
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
     df["hour_of_day"] = df.index.hour
@@ -227,7 +215,7 @@ def preprocess_live_data(df_btc, df_eth):
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["ETHUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
-        for lag in range(1, 11)
+        for lag in range(1, 6)
     ] + ["hour_of_day"]
     
     X = df[features]
