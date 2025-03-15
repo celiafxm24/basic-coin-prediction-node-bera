@@ -22,31 +22,18 @@ def update_data():
             else:
                 os.remove(path)
             print(f"Cleared {path}")
-        else:
-            print(f"Path not found, no need to clear: {path}")
     
     print("Downloading BTC data...")
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
-    if not files_btc:
-        raise RuntimeError("Failed to download BTC data.")
-    print(f"Downloaded {len(files_btc)} BTC files.")
-    
     print("Downloading ETH data...")
     files_eth = download_data("ETH", TRAINING_DAYS, REGION, DATA_PROVIDER)
-    if not files_eth:
-        raise RuntimeError("Failed to download ETH data.")
-    print(f"Downloaded {len(files_eth)} ETH files.")
-    
+    if not files_btc or not files_eth:
+        print("No data files downloaded. Skipping format_data and training.")
+        return
     print("Formatting data...")
     format_data(files_btc, files_eth, DATA_PROVIDER)
-    if not os.path.exists(price_data_file):
-        raise RuntimeError("Failed to format data: price_data.csv not created.")
-    print("Data formatted successfully.")
-    
     print("Training model...")
     train_model(TIMEFRAME)
-    if not os.path.exists(model_file) or not os.path.exists(scaler_file):
-        raise RuntimeError("Training failed: model.pkl or scaler.pkl not created.")
     print("Data update and training completed.")
 
 @app.route("/inference/<string:token>")
@@ -73,8 +60,8 @@ def update():
 
 if __name__ == "__main__":
     update_data()
-    # Wait until training completes
-    while not (os.path.exists(model_file_path) and os.path.exists(scaler_file_path)):
+    # Wait briefly to ensure training completes before starting Flask
+    while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
         print("Waiting for model and scaler files to be generated...")
         time.sleep(5)
     print("Starting Flask server...")
