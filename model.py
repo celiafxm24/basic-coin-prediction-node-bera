@@ -69,8 +69,8 @@ def format_data(files_btc, files_bera, data_provider):
             try:
                 myzip = ZipFile(zip_file_path)
                 with myzip.open(myzip.filelist[0]) as f:
-                    df = pd.read_csv(f, header=None).iloc[:, :11]
-                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
+                    df = pd.read_csv(f, header=None)
+                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
@@ -98,15 +98,9 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    # Robust column handling
-                    expected_cols = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    if len(df.columns) < 7:  # Minimum for OHLCV + end_time
-                        print(f"Error: Insufficient columns in {file}, skipping: {len(df.columns)}")
-                        skipped_files.append(file)
-                        continue
-                    df.columns = expected_cols[:len(df.columns)]
+                    # Assign all 12 columns explicitly
+                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
                     print(f"Assigned columns: {df.columns.tolist()}")
-                    # Try end_time first, then start_time if it fails
                     print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     print(f"BERA DataFrame after end_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
