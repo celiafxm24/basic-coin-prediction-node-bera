@@ -1,17 +1,16 @@
+# Done for log return 
 import json
 import os
 import time
-import numpy as np
-import pandas as pd
 from flask import Flask, Response
-import joblib
-from model import download_data, format_data, train_model, get_inference, format_live_data
+from model import download_data, format_data, train_model, get_inference
 from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
 
 app = Flask(__name__)
 
 def update_data():
     print("Starting data update process...")
+    # Clear all data to force refresh
     data_dir = os.path.join(os.getcwd(), "data", "binance")
     price_data_file = os.path.join(os.getcwd(), "data", "price_data.csv")
     model_file = model_file_path
@@ -30,8 +29,8 @@ def update_data():
     print("Downloading BERA data...")
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
     if not files_btc or not files_bera:
-        print("No data files downloaded. Skipping format_data and training.")
-        return
+        print("Warning: No data files downloaded for one or both pairs. Attempting to proceed with available data.")
+    print(f"Files downloaded - BTC: {len(files_btc)}, BERA: {len(files_bera)}")  # Added for debug
     print("Formatting data...")
     format_data(files_btc, files_bera, DATA_PROVIDER)
     print("Training model...")
@@ -46,41 +45,11 @@ def generate_inference(token):
     try:
         if not os.path.exists(model_file_path):
             raise FileNotFoundError("Model file not found. Please run update first to train the model.")
-        
-        # Load model and scaler
-        model = joblib.load(model_file_path)
-        scaler = joblib.load(scaler_file_path)
-
-        # Get and format live data
-        live_data = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        live_df = format_live_data(live_data)
-        
-        # Prepare features
-        print(f"live_df shape: {live_df.shape}")
-        live_X = live_df.drop(columns=["target_BERAUSDT"])
-        print(f"live_X shape: {live_X.shape}")
-        live_X_scaled = scaler.transform(live_X)
-        print(f"live_X_scaled shape: {live_X_scaled.shape}")
-
-        # Predict and force float conversion
-        raw_prediction = model.predict(live_X_scaled[-1].reshape(1, -1))[0]
-        print(f"Raw prediction: {raw_prediction}, type: {type(raw_prediction)}")
-        log_return_prediction = float(raw_prediction)
-        print(f"Converted log_return_prediction: {log_return_prediction}, type: {type(log_return_prediction)}")
-        
-        # Calculate predicted price
-        latest_price = live_df["close_BERAUSDT"].iloc[-1]
-        predicted_price = latest_price * np.exp(log_return_prediction)
-
-        # Log with 3 decimal places
-        print(f"Predicted 1h BERA/USD Log Return: {log_return_prediction:.6f}")
-        print(f"Latest BERA Price: {latest_price:.3f}")
-        print(f"Predicted BERA Price in 1h: {predicted_price:.3f}")
-
-        # Return JSON response
-        return Response(json.dumps({"log_return_prediction": log_return_prediction}), status=200, mimetype='application/json')
+        inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
+        return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
+        # Original return kept as comment:
+        # return Response(str(inference), status=200, mimetype='text/plain')  # Returns log return as text
     except Exception as e:
-        print(f"Inference error: {str(e)}")
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
 
 @app.route("/update")
@@ -93,8 +62,8 @@ def update():
         return "1"
 
 if __name__ == "__main__":
-    print(f"Executing app.py from: {os.path.abspath(__file__)}")
     update_data()
+    # Wait briefly to ensure training completes before starting Flask
     while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
         print("Waiting for model and scaler files to be generated...")
         time.sleep(5)

@@ -71,8 +71,7 @@ def format_data(files_btc, files_bera, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None)
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
-                    # Convert microseconds to milliseconds for pandas compatibility
-                    df["date"] = pd.to_datetime(df["end_time"] // 1000, unit="ms", errors='coerce')
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
                     df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
@@ -102,12 +101,11 @@ def format_data(files_btc, files_bera, data_provider):
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
                     print(f"Assigned columns: {df.columns.tolist()}")
                     print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
-                    # Convert microseconds to milliseconds for pandas compatibility
-                    df["date"] = pd.to_datetime(df["end_time"] // 1000, unit="ms", errors='coerce')
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
                     print(f"BERA DataFrame after end_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     if df["date"].isna().all():
                         print(f"Warning: All end_time dates are NaN in {file}, trying start_time")
-                        df["date"] = pd.to_datetime(df["start_time"] // 1000, unit="ms", errors='coerce')
+                        df["date"] = pd.to_datetime(df["start_time"], unit="us", errors='coerce')  # Changed to microseconds
                         print(f"BERA DataFrame after start_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
                     print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
@@ -380,46 +378,6 @@ def get_inference(token, timeframe, region, data_provider):
     print(f"Latest BERA Price: {latest_price:.2f}")
     print(f"Predicted BERA Price in 1h: {predicted_price:.2f}")
     return log_return_pred
-
-def format_live_data(live_data):
-    # live_data is a dict: {"BTCUSDT": [...], "BERAUSDT": [...]}
-    dfs = {}
-    for symbol, data in live_data.items():
-        df = pd.DataFrame(data, columns=["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"])
-        df["date"] = pd.to_datetime(df["end_time"], unit="ms")
-        df.set_index("date", inplace=True)
-        df = df[["open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]]
-        dfs[symbol] = df
-        print(f"{symbol} raw data rows: {len(df)}, columns: {df.columns.tolist()}")
-
-    # Combine BTCUSDT and BERAUSDT
-    price_df = pd.concat([dfs["BTCUSDT"].add_suffix("_BTCUSDT"), dfs["BERAUSDT"].add_suffix("_BERAUSDT")], axis=1)
-    print(f"Raw live data rows: {len(price_df)}")
-    print(f"Raw live data columns: {price_df.columns.tolist()}")
-    print(f"Sample raw live dates: {price_df.index[:5].tolist()}")
-
-    # Resample to 1h
-    price_df = price_df.resample("1h").agg({
-        f"{metric}_{pair}": "last"
-        for pair in ["BTCUSDT", "BERAUSDT"]
-        for metric in ["open", "high", "low", "close"]
-    })
-    print(f"Rows after resampling to 1h: {len(price_df)}")
-
-    # Add features
-    for pair in ["BTCUSDT", "BERAUSDT"]:
-        price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
-        for metric in ["open", "high", "low", "close"]:
-            for lag in range(1, 11):
-                price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
-    price_df["hour_of_day"] = price_df.index.hour
-    price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
-    print(f"Rows after adding features: {len(price_df)}")
-
-    # Drop NaN targets
-    price_df = price_df.dropna(subset=["target_BERAUSDT"])
-    print(f"Live data after preprocessing rows: {len(price_df)}")
-    return price_df
 
 if __name__ == "__main__":
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
