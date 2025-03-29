@@ -256,37 +256,54 @@ def train_model(timeframe, file_path=training_price_data_path):
     X_train, X_test, y_train, y_test, scaler = load_frame(file_path, timeframe)
     print(f"Training data shape: {X_train.shape}, Test data shape: {X_test.shape}")
     
-    # Adjust n_splits based on data size
     n_samples = len(X_train)
-    n_splits = min(5, max(1, n_samples - 1))  # At least 1 split, up to 5 if enough data
-    print(f"Using {n_splits} splits for cross-validation with {n_samples} samples")
-    tscv = TimeSeriesSplit(n_splits=n_splits)
-    
-    if MODEL == "XGBoost":
-        print("\n🚀 Training XGBoost Model with Grid Search...")
-        param_grid = {
-            'learning_rate': [0.01, 0.02, 0.05],
-            'max_depth': [2, 3],
-            'n_estimators': [50, 75, 100],
-            'subsample': [0.7, 0.8, 0.9],
-            'colsample_bytree': [0.5, 0.7],
-            'alpha': [10, 20],
-            'lambda': [1, 10]
-        }
-        model = xgb.XGBRegressor(objective="reg:squarederror")
-        grid_search = GridSearchCV(
-            estimator=model,
-            param_grid=param_grid,
-            cv=tscv,
-            scoring=make_scorer(mean_absolute_error, greater_is_better=False),
-            n_jobs=-1,
-            verbose=2
-        )
-        grid_search.fit(X_train, y_train)
-        model = grid_search.best_estimator_
-        print(f"\n✅ Best Hyperparameters: {grid_search.best_params_}")
+    if n_samples <= 1:
+        print("Warning: Too few samples for cross-validation, training basic model without GridSearchCV.")
+        if MODEL == "XGBoost":
+            model = xgb.XGBRegressor(
+                objective="reg:squarederror",
+                learning_rate=0.1,
+                max_depth=3,
+                n_estimators=100,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                alpha=10,
+                lambda_=1
+            )
+            model.fit(X_train, y_train)
+            print("Basic XGBoost model trained with default parameters.")
+        else:
+            raise ValueError(f"Unsupported model: {MODEL}")
     else:
-        raise ValueError(f"Unsupported model: {MODEL}")
+        n_splits = min(5, max(2, n_samples - 1))  # Ensure at least 2 splits
+        print(f"Using {n_splits} splits for cross-validation with {n_samples} samples")
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        
+        if MODEL == "XGBoost":
+            print("\n🚀 Training XGBoost Model with Grid Search...")
+            param_grid = {
+                'learning_rate': [0.01, 0.02, 0.05],
+                'max_depth': [2, 3],
+                'n_estimators': [50, 75, 100],
+                'subsample': [0.7, 0.8, 0.9],
+                'colsample_bytree': [0.5, 0.7],
+                'alpha': [10, 20],
+                'lambda': [1, 10]
+            }
+            model = xgb.XGBRegressor(objective="reg:squarederror")
+            grid_search = GridSearchCV(
+                estimator=model,
+                param_grid=param_grid,
+                cv=tscv,
+                scoring=make_scorer(mean_absolute_error, greater_is_better=False),
+                n_jobs=-1,
+                verbose=2
+            )
+            grid_search.fit(X_train, y_train)
+            model = grid_search.best_estimator_
+            print(f"\n✅ Best Hyperparameters: {grid_search.best_params_}")
+        else:
+            raise ValueError(f"Unsupported model: {MODEL}")
     
     train_pred = model.predict(X_train)
     train_mae = mean_absolute_error(y_train, train_pred)
@@ -296,13 +313,16 @@ def train_model(timeframe, file_path=training_price_data_path):
     print(f"Training RMSE (log returns): {train_rmse:.6f}")
     print(f"Training R²: {train_r2:.6f}")
 
-    test_pred = model.predict(X_test)
-    mae = mean_absolute_error(y_test, test_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, test_pred))
-    r2 = r2_score(y_test, test_pred)
-    print(f"Test MAE (log returns): {mae:.6f}")
-    print(f"Test RMSE (log returns): {rmse:.6f}")
-    print(f"Test R²: {r2:.6f}")
+    if len(X_test) > 0:  # Only evaluate test set if it exists
+        test_pred = model.predict(X_test)
+        mae = mean_absolute_error(y_test, test_pred)
+        rmse = np.sqrt(mean_squared_error(y_test, test_pred))
+        r2 = r2_score(y_test, test_pred)
+        print(f"Test MAE (log returns): {mae:.6f}")
+        print(f"Test RMSE (log returns): {rmse:.6f}")
+        print(f"Test R²: {r2:.6f}")
+    else:
+        print("No test data available for evaluation.")
     
     os.makedirs(os.path.dirname(model_file_path), exist_ok=True)
     with open(model_file_path, "wb") as f:
