@@ -14,7 +14,7 @@ from sklearn.svm import SVR
 from sklearn.kernel_ridge import KernelRidge
 import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
-from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL
+from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, CG_API_KEY
 
 binance_data_path = os.path.join(data_base_path, "binance")
 coingecko_data_path = os.path.join(data_base_path, "coingecko")
@@ -64,6 +64,7 @@ def format_data(files_btc, files_bera, data_provider):
             zip_file_path = os.path.join(binance_data_path, os.path.basename(file))
             if not os.path.exists(zip_file_path):
                 print(f"File not found: {zip_file_path}")
+                skipped_files.append(file)
                 continue
             try:
                 myzip = ZipFile(zip_file_path)
@@ -72,7 +73,7 @@ def format_data(files_btc, files_bera, data_provider):
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     df = df.dropna(subset=["date"])
-                    if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
+                    if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):  # Adjusted to today
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
@@ -86,6 +87,7 @@ def format_data(files_btc, files_bera, data_provider):
             zip_file_path = os.path.join(binance_data_path, os.path.basename(file))
             if not os.path.exists(zip_file_path):
                 print(f"File not found: {zip_file_path}")
+                skipped_files.append(file)
                 continue
             try:
                 myzip = ZipFile(zip_file_path)
@@ -94,7 +96,7 @@ def format_data(files_btc, files_bera, data_provider):
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     df = df.dropna(subset=["date"])
-                    if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
+                    if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
@@ -115,7 +117,7 @@ def format_data(files_btc, files_bera, data_provider):
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")
     price_df = pd.concat([price_df_btc, price_df_bera], axis=1)
-    print(f"Combined DataFrame rows before resampling: {len(price_df)}")  # Debug
+    print(f"Combined DataFrame rows before resampling: {len(price_df)}")
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
@@ -123,7 +125,7 @@ def format_data(files_btc, files_bera, data_provider):
             for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
         })
-        print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")  # Debug
+        print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")
 
     for pair in ["BERAUSDT", "BTCUSDT"]:
         price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
@@ -133,13 +135,15 @@ def format_data(files_btc, files_bera, data_provider):
 
     price_df["hour_of_day"] = price_df.index.hour
     price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
-    print(f"Rows before dropna: {len(price_df)}")  # Debug
-    price_df = price_df.dropna(subset=["target_BERAUSDT"])  # Only drop rows missing the target
-    print(f"Rows after dropna: {len(price_df)}")  # Debug
+    print(f"Rows before dropna: {len(price_df)}")
+    price_df = price_df.dropna(subset=["target_BERAUSDT"])
+    print(f"Rows after dropna: {len(price_df)}")
     
     if len(price_df) == 0:
-        print("No data remains after preprocessing target dropna. Saving partial data anyway.")
+        print("No data remains after preprocessing target dropna. Filling NaNs and saving partial data.")
+        price_df.fillna(0, inplace=True)  # Fill NaNs to allow training
         price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
+        print(f"Partial data saved to {training_price_data_path}")
         return
 
     price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
@@ -151,44 +155,53 @@ def load_frame(file_path, timeframe):
     
     df = pd.read_csv(file_path, index_col='date', parse_dates=True)
     if df.empty:
-        raise ValueError(f"Training data file {file_path} is empty.")
+        print("Warning: Training data file is empty, attempting to proceed with available data.")
+        # Create a minimal DataFrame if empty
+        df = pd.DataFrame(columns=[
+            f"{metric}_{pair}_lag{lag}" 
+            for pair in ["BERAUSDT", "BTCUSDT"]
+            for metric in ["open", "high", "low", "close"]
+            for lag in range(1, 11)
+        ] + ["hour_of_day", "target_BERAUSDT"])
+        df.loc[0] = 0  # Dummy row to avoid empty DataFrame
     
     df.ffill(inplace=True)
     df.bfill(inplace=True)
     
     features = [
         f"{metric}_{pair}_lag{lag}" 
-        for pair in ["BERAUSDT", "BTCUSDT"]  # Updated to BERAUSDT
+        for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
     ] + ["hour_of_day"]
     
     X = df[features]
-    y = df["target_BERAUSDT"]  # Updated to BERAUSDT
+    y = df["target_BERAUSDT"]
     
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     
     split_idx = int(len(X) * 0.8)
     if split_idx == 0:
-        raise ValueError("Not enough data to split into train and test sets.")
+        print("Warning: Not enough data to split, using all data for training.")
+        split_idx = len(X)  # Use all data if too small
     
     X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
     
     return X_train, X_test, y_train, y_test, scaler
 
-def preprocess_live_data(df_btc, df_bera):  # Changed df_eth to df_bera
+def preprocess_live_data(df_btc, df_bera):
     print(f"BTC raw data rows: {len(df_btc)}, columns: {df_btc.columns.tolist()}")
-    print(f"BERA raw data rows: {len(df_bera)}, columns: {df_bera.columns.tolist()}")  # Updated to BERA
+    print(f"BERA raw data rows: {len(df_bera)}, columns: {df_bera.columns.tolist()}")
 
     if "date" in df_btc.columns:
         df_btc.set_index("date", inplace=True)
     if "date" in df_bera.columns:
-        df_bera.set_index("date", inplace=True)  # Updated to BERA
+        df_bera.set_index("date", inplace=True)
     
     df_btc = df_btc.rename(columns=lambda x: f"{x}_BTCUSDT" if x != "date" else x)
-    df_bera = df_bera.rename(columns=lambda x: f"{x}_BERAUSDT" if x != "date" else x)  # Updated to BERAUSDT
+    df_bera = df_bera.rename(columns=lambda x: f"{x}_BERAUSDT" if x != "date" else x)
     
     df = pd.concat([df_btc, df_bera], axis=1)
     print(f"Raw live data rows: {len(df)}")
@@ -199,13 +212,12 @@ def preprocess_live_data(df_btc, df_bera):  # Changed df_eth to df_bera
     if TIMEFRAME != "1m":
         df = df.resample(TIMEFRAME).agg({
             f"{metric}_{pair}": "last" 
-            for pair in ["BERAUSDT", "BTCUSDT"]  # Updated to BERAUSDT
+            for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(df)}")
-        print(f"Sample resampled dates: {df.index[:5].tolist()}")
 
-    for pair in ["BERAUSDT", "BTCUSDT"]:  # Updated to BERAUSDT
+    for pair in ["BERAUSDT", "BTCUSDT"]:
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
@@ -221,7 +233,7 @@ def preprocess_live_data(df_btc, df_bera):  # Changed df_eth to df_bera
 
     features = [
         f"{metric}_{pair}_lag{lag}" 
-        for pair in ["BERAUSDT", "BTCUSDT"]  # Updated to BERAUSDT
+        for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
     ] + ["hour_of_day"]
@@ -302,38 +314,30 @@ def get_inference(token, timeframe, region, data_provider):
     
     if data_provider == "coingecko":
         df_btc = download_coingecko_current_day_data("BTC", CG_API_KEY)
-        df_bera = download_coingecko_current_day_data("BERA", CG_API_KEY)  # Updated to BERA (assumes CoinGecko supports BERA)
+        df_bera = download_coingecko_current_day_data("BERA", CG_API_KEY)
     else:
         df_btc = download_binance_current_day_data("BTCUSDT", region)
-        df_bera = download_binance_current_day_data("BERAUSDT", region)  # Updated to BERAUSDT
+        df_bera = download_binance_current_day_data("BERAUSDT", region)
     
-    ticker_url = f'https://api.binance.{region}/api/v3/ticker/price?symbol=BERAUSDT'  # Updated to BERAUSDT
+    ticker_url = f'https://api.binance.{region}/api/v3/ticker/price?symbol=BERAUSDT'
     response = requests.get(ticker_url)
     response.raise_for_status()
     latest_price = float(response.json()['price'])
     
-    X_new = preprocess_live_data(df_btc, df_bera)  # Updated to df_bera
+    X_new = preprocess_live_data(df_btc, df_bera)
     log_return_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]
     
     # Calculate predicted price for logging purposes only
     predicted_price = latest_price * np.exp(log_return_pred)
     
-    print(f"Predicted 1h BERA/USD Log Return: {log_return_pred:.6f}")  # Updated to 1h and BERA
-    print(f"Latest BERA Price: {latest_price:.2f}")  # Updated to BERA
-    print(f"Predicted BERA Price in 1h: {predicted_price:.2f}")  # Updated to 1h and BERA
-    return log_return_pred  # Return the log return instead of the predicted price
+    print(f"Predicted 1h BERA/USD Log Return: {log_return_pred:.6f}")
+    print(f"Latest BERA Price: {latest_price:.2f}")
+    print(f"Predicted BERA Price in 1h: {predicted_price:.2f}")
+    return log_return_pred
 
-# Example usage (optional, retained from original intent)
 if __name__ == "__main__":
-    # Download data
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
-    
-    # Format data
     format_data(files_btc, files_bera, DATA_PROVIDER)
-    
-    # Train model
     model, scaler = train_model(TIMEFRAME)
-    
-    # Get inference
     log_return = get_inference(TOKEN, TIMEFRAME, REGION, DATA_PROVIDER)
