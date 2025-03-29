@@ -375,10 +375,9 @@ def get_inference(token, timeframe, region, data_provider):
     predicted_price = latest_price * np.exp(log_return_pred)
     
     print(f"Predicted 1h BERA/USD Log Return: {log_return_pred:.6f}")
-    print(f"Latest BERA Price: {latest_price:.6f}")
-    print(f"Predicted BERA Price in 1h: {predicted_price:.6f}")
+    print(f"Latest BERA Price: {latest_price:.3f}")
+    print(f"Predicted BERA Price in 1h: {predicted_price:.3f}")
     return log_return_pred
-
 if __name__ == "__main__":
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
