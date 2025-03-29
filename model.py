@@ -14,7 +14,7 @@ from sklearn.svm import SVR
 from sklearn.kernel_ridge import KernelRidge
 import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
-from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL, CG_API_KEY  # Added MODEL
+from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL, CG_API_KEY
 
 binance_data_path = os.path.join(data_base_path, "binance")
 coingecko_data_path = os.path.join(data_base_path, "coingecko")
@@ -79,7 +79,7 @@ def format_data(files_btc, files_bera, data_provider):
                     print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     price_df_btc = pd.concat([price_df_btc, df])
             except Exception as e:
-                print(f"Error processing {file}: {str(e)}")
+                print(f"Error processing BTC file {file}: {str(e)}")
                 skipped_files.append(file)
                 continue
 
@@ -100,9 +100,11 @@ def format_data(files_btc, files_bera, data_provider):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
+                    if df.empty:
+                        print(f"BERA file {file} is empty after processing")
                     price_df_bera = pd.concat([price_df_bera, df])
             except Exception as e:
-                print(f"Error processing {file}: {str(e)}")
+                print(f"Error processing BERA file {file}: {str(e)}")
                 skipped_files.append(file)
                 continue
 
@@ -254,7 +256,12 @@ def train_model(timeframe, file_path=training_price_data_path):
     X_train, X_test, y_train, y_test, scaler = load_frame(file_path, timeframe)
     print(f"Training data shape: {X_train.shape}, Test data shape: {X_test.shape}")
     
-    tscv = TimeSeriesSplit(n_splits=5)
+    # Adjust n_splits based on data size
+    n_samples = len(X_train)
+    n_splits = min(5, max(1, n_samples - 1))  # At least 1 split, up to 5 if enough data
+    print(f"Using {n_splits} splits for cross-validation with {n_samples} samples")
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+    
     if MODEL == "XGBoost":
         print("\n🚀 Training XGBoost Model with Grid Search...")
         param_grid = {
