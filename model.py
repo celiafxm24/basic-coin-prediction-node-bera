@@ -6,12 +6,8 @@ import pandas as pd
 import numpy as np
 import requests
 from sklearn.preprocessing import StandardScaler
-from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, make_scorer
-from sklearn.linear_model import LinearRegression, BayesianRidge
-from sklearn.svm import SVR
-from sklearn.kernel_ridge import KernelRidge
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
 from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL, CG_API_KEY
@@ -71,7 +67,7 @@ def format_data(files_btc, files_bera, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None)
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')
                     df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
@@ -91,30 +87,13 @@ def format_data(files_btc, files_bera, data_provider):
                 continue
             try:
                 myzip = ZipFile(zip_file_path)
-                print(f"Opening BERA file: {zip_file_path}, contents: {myzip.namelist()}")
                 with myzip.open(myzip.filelist[0]) as f:
-                    sample_lines = [line.decode('utf-8').strip() for line in f.readlines()[:5]]
-                    print(f"Sample content of {zip_file_path}: {sample_lines}")
-                    f.seek(0)
                     df = pd.read_csv(f, header=None)
-                    print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
-                    print(f"Assigned columns: {df.columns.tolist()}")
-                    print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
-                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
-                    print(f"BERA DataFrame after end_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
-                    if df["date"].isna().all():
-                        print(f"Warning: All end_time dates are NaN in {file}, trying start_time")
-                        df["date"] = pd.to_datetime(df["start_time"], unit="us", errors='coerce')  # Changed to microseconds
-                        print(f"BERA DataFrame after start_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')
                     df = df.dropna(subset=["date"])
-                    print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
-                    if df.empty:
-                        print(f"Error: BERA file {file} is empty after date processing, skipping")
-                        skipped_files.append(file)
-                        continue
                     df.set_index("date", inplace=True)
-                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist() if not df.empty else '[]'}")
+                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     price_df_bera = pd.concat([price_df_bera, df])
             except Exception as e:
                 print(f"Error processing BERA file {file}: {str(e)}")
@@ -128,13 +107,10 @@ def format_data(files_btc, files_bera, data_provider):
         print("Warning: Partial data processed (one pair missing), proceeding with available data.")
 
     print(f"Skipped files due to errors: {skipped_files}")
-    print(f"price_df_btc rows: {len(price_df_btc)}, columns: {price_df_btc.columns.tolist()}")
-    print(f"price_df_bera rows: {len(price_df_bera)}, columns: {price_df_bera.columns.tolist()}")
-    
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")
     price_df = pd.concat([price_df_btc, price_df_bera], axis=1)
-    print(f"Combined DataFrame rows before resampling: {len(price_df)}, columns: {price_df.columns.tolist()}")
+    print(f"Combined DataFrame rows before resampling: {len(price_df)}")
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
@@ -144,20 +120,36 @@ def format_data(files_btc, files_bera, data_provider):
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")
 
+    # Existing log-return and lagged features
     for pair in ["BERAUSDT", "BTCUSDT"]:
         price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
+    # New features
+    # 1. Volatility (rolling standard deviation of log-returns)
+    for pair in ["BERAUSDT", "BTCUSDT"]:
+        price_df[f"volatility_{pair}"] = price_df[f"log_return_{pair}"].rolling(window=5).std()
+
+    # 2. Momentum (price change over 5 periods)
+    for pair in ["BERAUSDT", "BTCUSDT"]:
+        price_df[f"momentum_{pair}"] = price_df[f"close_{pair}"] - price_df[f"close_{pair}"].shift(5)
+
+    # 3. BTC-BERA correlation (rolling correlation of closes)
+    price_df["btc_bera_corr"] = price_df["close_BTCUSDT"].rolling(window=10).corr(price_df["close_BERAUSDT"])
+
+    # Hour of day
     price_df["hour_of_day"] = price_df.index.hour
     price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
+
+    # Drop NaNs introduced by new features
     print(f"Rows before dropna: {len(price_df)}")
-    price_df = price_df.dropna(subset=["target_BERAUSDT"])
+    price_df = price_df.dropna()
     print(f"Rows after dropna: {len(price_df)}")
-    
+
     if len(price_df) == 0:
-        print("No data remains after preprocessing target dropna. Filling NaNs and saving partial data.")
+        print("No data remains after preprocessing. Filling NaNs and saving partial data.")
         price_df.fillna(0, inplace=True)
         price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
         print(f"Partial data saved to {training_price_data_path}")
@@ -178,7 +170,8 @@ def load_frame(file_path, timeframe):
             for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
             for lag in range(1, 11)
-        ] + ["hour_of_day", "target_BERAUSDT"])
+        ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
+             "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr", "target_BERAUSDT"])
         df.loc[0] = 0
     
     df.ffill(inplace=True)
@@ -189,7 +182,8 @@ def load_frame(file_path, timeframe):
         for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + ["hour_of_day"]
+    ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
+         "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr"]
     
     X = df[features]
     y = df["target_BERAUSDT"]
@@ -221,9 +215,6 @@ def preprocess_live_data(df_btc, df_bera):
     
     df = pd.concat([df_btc, df_bera], axis=1)
     print(f"Raw live data rows: {len(df)}")
-    print(f"Raw live data columns: {df.columns.tolist()}")
-    print(f"Sample raw live dates: {df.index[:5].tolist()}")
-    print(f"Sample raw live data:\n{df.head()}")
 
     if TIMEFRAME != "1m":
         df = df.resample(TIMEFRAME).agg({
@@ -233,26 +224,31 @@ def preprocess_live_data(df_btc, df_bera):
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(df)}")
 
+    # Existing lagged features
     for pair in ["BERAUSDT", "BTCUSDT"]:
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
+    # New features
+    for pair in ["BERAUSDT", "BTCUSDT"]:
+        df[f"log_return_{pair}"] = np.log(df[f"close_{pair}"].shift(-1) / df[f"close_{pair}"])
+        df[f"volatility_{pair}"] = df[f"log_return_{pair}"].rolling(window=5).std()
+        df[f"momentum_{pair}"] = df[f"close_{pair}"] - df[f"close_{pair}"].shift(5)
+    
+    df["btc_bera_corr"] = df["close_BTCUSDT"].rolling(window=10).corr(df["close_BERAUSDT"])
     df["hour_of_day"] = df.index.hour
     
-    print(f"Rows after adding features: {len(df)}")
-    print(f"Sample data with features:\n{df.tail()}")
-
     df = df.dropna()
     print(f"Live data after preprocessing rows: {len(df)}")
-    print(f"Live data after preprocessing:\n{df.tail()}")
 
     features = [
         f"{metric}_{pair}_lag{lag}" 
         for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + ["hour_of_day"]
+    ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
+         "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr"]
     
     X = df[features]
     if len(X) == 0:
@@ -274,51 +270,45 @@ def train_model(timeframe, file_path=training_price_data_path):
     n_samples = len(X_train)
     if n_samples <= 1:
         print("Warning: Too few samples for cross-validation, training basic model without GridSearchCV.")
-        if MODEL == "XGBoost":
-            model = xgb.XGBRegressor(
-                objective="reg:squarederror",
-                learning_rate=0.1,
-                max_depth=3,
-                n_estimators=100,
-                subsample=0.8,
-                colsample_bytree=0.8,
-                alpha=10,
-                lambda_=1
-            )
-            model.fit(X_train, y_train)
-            print("Basic XGBoost model trained with default parameters.")
-        else:
-            raise ValueError(f"Unsupported model: {MODEL}")
+        model = xgb.XGBRegressor(
+            objective="reg:squarederror",
+            learning_rate=0.1,
+            max_depth=3,
+            n_estimators=100,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            alpha=10,
+            lambda_=1
+        )
+        model.fit(X_train, y_train)
+        print("Basic XGBoost model trained with default parameters.")
     else:
-        n_splits = min(5, max(2, n_samples - 1))  # Ensure at least 2 splits
+        n_splits = min(5, max(2, n_samples - 1))
         print(f"Using {n_splits} splits for cross-validation with {n_samples} samples")
         tscv = TimeSeriesSplit(n_splits=n_splits)
         
-        if MODEL == "XGBoost":
-            print("\n🚀 Training XGBoost Model with Grid Search...")
-            param_grid = {
-                'learning_rate': [0.01, 0.02, 0.05],
-                'max_depth': [2, 3],
-                'n_estimators': [50, 75, 100],
-                'subsample': [0.7, 0.8, 0.9],
-                'colsample_bytree': [0.5, 0.7],
-                'alpha': [10, 20],
-                'lambda': [1, 10]
-            }
-            model = xgb.XGBRegressor(objective="reg:squarederror")
-            grid_search = GridSearchCV(
-                estimator=model,
-                param_grid=param_grid,
-                cv=tscv,
-                scoring=make_scorer(mean_absolute_error, greater_is_better=False),
-                n_jobs=-1,
-                verbose=2
-            )
-            grid_search.fit(X_train, y_train)
-            model = grid_search.best_estimator_
-            print(f"\n✅ Best Hyperparameters: {grid_search.best_params_}")
-        else:
-            raise ValueError(f"Unsupported model: {MODEL}")
+        print("\n🚀 Training XGBoost Model with Grid Search...")
+        param_grid = {
+            'learning_rate': [0.01, 0.05, 0.1, 0.2],
+            'max_depth': [3, 5, 7],
+            'n_estimators': [100, 200, 300],
+            'subsample': [0.6, 0.8, 1.0],
+            'colsample_bytree': [0.6, 0.8, 1.0],
+            'alpha': [0, 10, 20],
+            'lambda': [1, 10, 20]
+        }
+        model = xgb.XGBRegressor(objective="reg:squarederror")
+        grid_search = GridSearchCV(
+            estimator=model,
+            param_grid=param_grid,
+            cv=tscv,
+            scoring='r2',
+            n_jobs=-1,
+            verbose=2
+        )
+        grid_search.fit(X_train, y_train)
+        model = grid_search.best_estimator_
+        print(f"\n✅ Best Hyperparameters: {grid_search.best_params_}")
     
     train_pred = model.predict(X_train)
     train_mae = mean_absolute_error(y_train, train_pred)
@@ -328,7 +318,7 @@ def train_model(timeframe, file_path=training_price_data_path):
     print(f"Training RMSE (log returns): {train_rmse:.6f}")
     print(f"Training R²: {train_r2:.6f}")
 
-    if len(X_test) > 0:  # Only evaluate test set if it exists
+    if len(X_test) > 0:
         test_pred = model.predict(X_test)
         mae = mean_absolute_error(y_test, test_pred)
         rmse = np.sqrt(mean_squared_error(y_test, test_pred))
@@ -378,6 +368,7 @@ def get_inference(token, timeframe, region, data_provider):
     print(f"Latest BERA Price: {latest_price:.3f}")
     print(f"Predicted BERA Price in 1h: {predicted_price:.3f}")
     return log_return_pred
+
 if __name__ == "__main__":
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
