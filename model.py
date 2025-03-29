@@ -14,7 +14,7 @@ from sklearn.svm import SVR
 from sklearn.kernel_ridge import KernelRidge
 import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
-from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, CG_API_KEY
+from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL, CG_API_KEY  # Added MODEL
 
 binance_data_path = os.path.join(data_base_path, "binance")
 coingecko_data_path = os.path.join(data_base_path, "coingecko")
@@ -73,7 +73,7 @@ def format_data(files_btc, files_bera, data_provider):
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     df = df.dropna(subset=["date"])
-                    if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):  # Adjusted to today
+                    if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BTC file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
@@ -141,7 +141,7 @@ def format_data(files_btc, files_bera, data_provider):
     
     if len(price_df) == 0:
         print("No data remains after preprocessing target dropna. Filling NaNs and saving partial data.")
-        price_df.fillna(0, inplace=True)  # Fill NaNs to allow training
+        price_df.fillna(0, inplace=True)
         price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
         print(f"Partial data saved to {training_price_data_path}")
         return
@@ -156,14 +156,13 @@ def load_frame(file_path, timeframe):
     df = pd.read_csv(file_path, index_col='date', parse_dates=True)
     if df.empty:
         print("Warning: Training data file is empty, attempting to proceed with available data.")
-        # Create a minimal DataFrame if empty
         df = pd.DataFrame(columns=[
             f"{metric}_{pair}_lag{lag}" 
             for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
             for lag in range(1, 11)
         ] + ["hour_of_day", "target_BERAUSDT"])
-        df.loc[0] = 0  # Dummy row to avoid empty DataFrame
+        df.loc[0] = 0
     
     df.ffill(inplace=True)
     df.bfill(inplace=True)
@@ -184,7 +183,7 @@ def load_frame(file_path, timeframe):
     split_idx = int(len(X) * 0.8)
     if split_idx == 0:
         print("Warning: Not enough data to split, using all data for training.")
-        split_idx = len(X)  # Use all data if too small
+        split_idx = len(X)
     
     X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
