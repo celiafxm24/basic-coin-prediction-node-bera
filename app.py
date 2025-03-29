@@ -37,21 +37,30 @@ def update_data():
     train_model(TIMEFRAME)
     print("Data update and training completed.")
 
-@app.route("/inference/<string:token>")
-def generate_inference(token):
-    if not token or token.upper() != TOKEN:
-        error_msg = "Token is required" if not token else f"Token {token} not supported, expected {TOKEN}"
-        return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
-    try:
-        if not os.path.exists(model_file_path):
-            raise FileNotFoundError("Model file not found. Please run update first to train the model.")
-        inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
-        # Original return kept as comment:
-        # return Response(str(inference), status=200, mimetype='text/plain')  # Returns log return as text
-    except Exception as e:
-        return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
+@app.route("/inference/<coin>", methods=["GET"])
+def inference(coin):
+    if coin not in ["BTC", "BERA"]:
+        return jsonify({"error": "Unsupported coin"}), 400
 
+    model = joblib.load(model_path.format(coin=coin.lower()))
+    scaler = joblib.load(scaler_path)
+
+    live_data = fetch_live_data(["BTCUSDT", "BERAUSDT"])
+    live_df = format_live_data(live_data)
+
+    live_X = live_df.drop(columns=["target_BERAUSDT"])
+    live_X_scaled = scaler.transform(live_X)
+    log_return_prediction = model.predict(live_X_scaled)[-1]
+
+    latest_price = live_df["close_BERAUSDT"].iloc[-1]
+    predicted_price = latest_price * np.exp(log_return_prediction)
+
+    print(f"Predicted 1h BERA/USD Log Return: {log_return_prediction:.6f}")
+    print(f"Latest BERA Price: {latest_price:.3f}")
+    print(f"Predicted BERA Price in 1h: {predicted_price:.3f}")
+
+    return jsonify({"log_return_prediction": log_return_prediction})
+    
 @app.route("/update")
 def update():
     try:
