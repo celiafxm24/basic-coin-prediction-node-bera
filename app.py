@@ -30,7 +30,7 @@ def update_data():
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
     if not files_btc or not files_bera:
         print("Warning: No data files downloaded for one or both pairs. Attempting to proceed with available data.")
-        # Allow proceeding with partial data instead of returning
+    print(f"Files downloaded - BTC: {len(files_btc)}, BERA: {len(files_bera)}")  # Added for debug
     print("Formatting data...")
     format_data(files_btc, files_bera, DATA_PROVIDER)
     print("Training model...")
