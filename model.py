@@ -71,7 +71,7 @@ def format_data(files_btc, files_bera, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     df = pd.read_csv(f, header=None)
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
                     df = df.dropna(subset=["date"])
                     if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
@@ -98,15 +98,14 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    # Assign all 12 columns explicitly
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd", "ignore"]
                     print(f"Assigned columns: {df.columns.tolist()}")
                     print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
-                    df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
+                    df["date"] = pd.to_datetime(df["end_time"], unit="us", errors='coerce')  # Changed to microseconds
                     print(f"BERA DataFrame after end_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     if df["date"].isna().all():
                         print(f"Warning: All end_time dates are NaN in {file}, trying start_time")
-                        df["date"] = pd.to_datetime(df["start_time"], unit="ms", errors='coerce')
+                        df["date"] = pd.to_datetime(df["start_time"], unit="us", errors='coerce')  # Changed to microseconds
                         print(f"BERA DataFrame after start_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
                     print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
