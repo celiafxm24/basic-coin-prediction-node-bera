@@ -2,9 +2,10 @@ import json
 import os
 import time
 import numpy as np
+import pandas as pd
 from flask import Flask, Response
 import joblib
-from model import download_data, format_data, train_model, get_inference
+from model import download_data, format_data, train_model, get_inference, format_live_data
 from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
 
 app = Flask(__name__)
@@ -50,9 +51,9 @@ def generate_inference(token):
         model = joblib.load(model_file_path)
         scaler = joblib.load(scaler_file_path)
 
-        # Get inference data
+        # Get and format live data
         live_data = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        live_df = format_data(live_data["BTCUSDT"], live_data["BERAUSDT"], DATA_PROVIDER)  # Assuming live_data is dict
+        live_df = format_live_data(live_data)
         
         # Prepare features
         print(f"live_df shape: {live_df.shape}")
@@ -61,8 +62,8 @@ def generate_inference(token):
         live_X_scaled = scaler.transform(live_X)
         print(f"live_X_scaled shape: {live_X_scaled.shape}")
 
-        # Predict and ensure 2D input for the latest row
-        log_return_prediction = model.predict(live_X_scaled[-1].reshape(1, -1))[0]  # Predict on last row
+        # Predict on the latest row
+        log_return_prediction = model.predict(live_X_scaled[-1].reshape(1, -1))[0]
         
         # Calculate predicted price
         latest_price = live_df["close_BERAUSDT"].iloc[-1]
