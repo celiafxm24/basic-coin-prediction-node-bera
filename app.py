@@ -62,9 +62,11 @@ def generate_inference(token):
         live_X_scaled = scaler.transform(live_X)
         print(f"live_X_scaled shape: {live_X_scaled.shape}")
 
-        # Predict on the latest row and convert to Python float
-        log_return_prediction = float(model.predict(live_X_scaled[-1].reshape(1, -1))[0])
-        print(f"log_return_prediction type: {type(log_return_prediction)}")  # Debug type
+        # Predict and force float conversion
+        raw_prediction = model.predict(live_X_scaled[-1].reshape(1, -1))[0]
+        print(f"Raw prediction type: {type(raw_prediction)}")
+        log_return_prediction = float(raw_prediction)
+        print(f"log_return_prediction type after float(): {type(log_return_prediction)}")
         
         # Calculate predicted price
         latest_price = live_df["close_BERAUSDT"].iloc[-1]
@@ -91,6 +93,7 @@ def update():
         return "1"
 
 if __name__ == "__main__":
+    print(f"Running app.py from: {os.path.abspath(__file__)}")
     update_data()
     while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
         print("Waiting for model and scaler files to be generated...")
