@@ -9,12 +9,12 @@ model_file_path = os.path.join(data_base_path, "model_bera.pkl")
 scaler_file_path = os.path.join(data_base_path, "scaler.pkl")
 
 TOKEN = os.getenv("TOKEN", default="BERA").upper()
-TRAINING_DAYS = os.getenv("TRAINING_DAYS", default="180")
+TRAINING_DAYS = os.getenv("TRAINING_DAYS", default="180")  # Consider increasing to 365 for more data
 TIMEFRAME = os.getenv("TIMEFRAME", default="1h")
 MODEL = os.getenv("MODEL", default="XGBoost")
-REGION = os.getenv("REGION", default="com").lower()  # Changed from "us" to "com"
+REGION = os.getenv("REGION", default="com").lower()
 if REGION in ["us", "com", "usa"]:
-    REGION = "com"  # Force "com" for global Binance
+    REGION = "com"
 else:
     REGION = "com"
 DATA_PROVIDER = os.getenv("DATA_PROVIDER", default="binance").lower()
