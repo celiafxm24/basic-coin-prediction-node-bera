@@ -56,7 +56,7 @@ def daterange(start_date, end_date):
 
 def download_binance_daily_data(pair, training_days, region, download_path):
     base_url = f"https://data.binance.vision/data/spot/daily/klines"
-    end_date = date.today() - timedelta(days=1)  # Up to yesterday
+    end_date = date.today() - timedelta(days=1)
     start_date = end_date - timedelta(days=int(training_days))
     print(f"Downloading {pair} data from {start_date} to {end_date}")
     
@@ -75,14 +75,14 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     return downloaded_files
 
 def download_binance_current_day_data(pair, region):
-    limit = 1000  # Max per request
+    limit = 1000
     total_minutes = 10080  # 7 days
-    requests_needed = (total_minutes + limit - 1) // limit  # Ceiling division
+    requests_needed = (total_minutes + limit - 1) // limit
     dfs = []
-    end_time = int(time.time() * 1000)  # Current time in ms
+    end_time = int(time.time() * 1000)
     
     for i in range(requests_needed):
-        start_time = end_time - (limit * 60 * 1000)  # Move back 1000 minutes per request
+        start_time = end_time - (limit * 60 * 1000)
         url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}&endTime={end_time}'
         print(f"Fetching {pair} data batch {i+1}/{requests_needed} from: {url}")
         response = session.get(url)
@@ -94,7 +94,7 @@ def download_binance_current_day_data(pair, region):
         df['date'] = df['date'].apply(pd.to_datetime)
         df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
         dfs.append(df)
-        end_time = int(df['end_time'].iloc[0]) - 1  # Set next end time to just before the earliest in this batch
+        end_time = int(df['end_time'].iloc[0]) - 1
     
     combined_df = pd.concat(dfs).sort_index()
     print(f"Total {pair} live data rows fetched: {len(combined_df)}")
@@ -107,7 +107,7 @@ def get_coingecko_coin_id(token):
         'BTC': 'bitcoin',
         'BNB': 'binancecoin',
         'ARB': 'arbitrum',
-        'BERA': 'bera'  # Added BERA (assumed ID, verify with CoinGecko)
+        'BERA': 'bera'
     }
     token = token.upper()
     if token in token_map:
