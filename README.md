@@ -26,7 +26,7 @@ A complete working example is provided in the `docker-compose.yml` file.
 
     Here are the currently accepted configurations:
     - TOKEN
-    Must be one in ('ETH','SOL','BTC','BNB','ARB'). 
+    Must be one in ('BERA','SOL','BTC','BNB','ARB'). 
     Note: if you are using `Binance` as the data provider, any token could be used.
     If you are using Coingecko, you should add its `coin_id` in the [token_map here](https://github.com/allora-network/basic-coin-prediction-node/blob/main/updater.py#L107). Find [more info here](https://docs.coingecko.com/reference/simple-price) and the [list here](https://docs.google.com/spreadsheets/d/1wTTuxXt8n9q7C4NDXqQpI3wpKu1_5bGVmP9Xz0XGSyU/edit?usp=sharing).
     - TRAINING_DAYS
@@ -91,14 +91,14 @@ This setup allows you to develop your model without the need to bring up the off
     ```
     Wait for the initial data load.
 
-2. Send requests to the inference model. For example, request ETH price inferences:
+2. Send requests to the inference model. For example, request BERA price inferences:
     
     ```sh
-    curl http://127.0.0.1:8000/inference/ETH
+    curl http://127.0.0.1:8000/inference/BERA
     ```
     Expected response:
     ```json
-    {"value":"2564.021586281073"}
+    {"log_return_prediction": -0.0007228919421322644}
     ```
 
 3. Update the node's internal state (download pricing data, train, and update the model):
