@@ -26,13 +26,13 @@ def update_data():
     
     print("Downloading BTC data...")
     files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
-    print("Downloading BERA data...")  # Changed from ETH to BERA
-    files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)  # Changed from ETH to BERA
+    print("Downloading BERA data...")
+    files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
     if not files_btc or not files_bera:
-        print("No data files downloaded. Skipping format_data and training.")
-        return
+        print("Warning: No data files downloaded for one or both pairs. Attempting to proceed with available data.")
+        # Allow proceeding with partial data instead of returning
     print("Formatting data...")
-    format_data(files_btc, files_bera, DATA_PROVIDER)  # Updated to use files_bera
+    format_data(files_btc, files_bera, DATA_PROVIDER)
     print("Training model...")
     train_model(TIMEFRAME)
     print("Data update and training completed.")
@@ -46,7 +46,6 @@ def generate_inference(token):
         if not os.path.exists(model_file_path):
             raise FileNotFoundError("Model file not found. Please run update first to train the model.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        # Modified to return JSON like your current app.py, but kept original text option commented
         return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
         # Original return kept as comment:
         # return Response(str(inference), status=200, mimetype='text/plain')  # Returns log return as text
@@ -69,4 +68,4 @@ if __name__ == "__main__":
         print("Waiting for model and scaler files to be generated...")
         time.sleep(5)
     print("Starting Flask server...")
-    app.run(host="0.0.0.0", port=8000)  # Removed debug=True to match original
+    app.run(host="0.0.0.0", port=8000)
