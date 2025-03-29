@@ -64,6 +64,7 @@ def generate_inference(token):
 
         # Predict on the latest row and convert to Python float
         log_return_prediction = float(model.predict(live_X_scaled[-1].reshape(1, -1))[0])
+        print(f"log_return_prediction type: {type(log_return_prediction)}")  # Debug type
         
         # Calculate predicted price
         latest_price = live_df["close_BERAUSDT"].iloc[-1]
