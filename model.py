@@ -98,28 +98,30 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    # Robust column handling with explicit naming
+                    # Robust column handling
                     expected_cols = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     if len(df.columns) < 7:  # Minimum for OHLCV + end_time
-                        print(f"Error: Insufficient columns in {file}, skipping")
+                        print(f"Error: Insufficient columns in {file}, skipping: {len(df.columns)}")
                         skipped_files.append(file)
                         continue
                     df.columns = expected_cols[:len(df.columns)]
                     print(f"Assigned columns: {df.columns.tolist()}")
-                    # Debug raw end_time and date conversion
+                    # Try end_time first, then start_time if it fails
                     print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
-                    print(f"BERA DataFrame after date conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
+                    print(f"BERA DataFrame after end_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     if df["date"].isna().all():
-                        print(f"Error: All dates are NaN in {file}, trying alternative parsing")
+                        print(f"Warning: All end_time dates are NaN in {file}, trying start_time")
                         df["date"] = pd.to_datetime(df["start_time"], unit="ms", errors='coerce')
                         print(f"BERA DataFrame after start_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
                     print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
+                    if df.empty:
+                        print(f"Error: BERA file {file} is empty after date processing, skipping")
+                        skipped_files.append(file)
+                        continue
                     df.set_index("date", inplace=True)
                     print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist() if not df.empty else '[]'}")
-                    if df.empty:
-                        print(f"BERA file {file} is empty after processing")
                     price_df_bera = pd.concat([price_df_bera, df])
             except Exception as e:
                 print(f"Error processing BERA file {file}: {str(e)}")
