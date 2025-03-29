@@ -98,15 +98,22 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    # Robust column handling
+                    # Robust column handling with explicit naming
                     expected_cols = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    n_cols = min(len(df.columns), len(expected_cols))
-                    df.columns = expected_cols[:n_cols]
+                    if len(df.columns) < 7:  # Minimum for OHLCV + end_time
+                        print(f"Error: Insufficient columns in {file}, skipping")
+                        skipped_files.append(file)
+                        continue
+                    df.columns = expected_cols[:len(df.columns)]
                     print(f"Assigned columns: {df.columns.tolist()}")
-                    # Debug raw end_time values
+                    # Debug raw end_time and date conversion
                     print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     print(f"BERA DataFrame after date conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
+                    if df["date"].isna().all():
+                        print(f"Error: All dates are NaN in {file}, trying alternative parsing")
+                        df["date"] = pd.to_datetime(df["start_time"], unit="ms", errors='coerce')
+                        print(f"BERA DataFrame after start_time conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
                     print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
                     df.set_index("date", inplace=True)
