@@ -98,13 +98,14 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"][:len(df.columns)]
+                    # Dynamically assign columns based on available data
+                    expected_cols = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
+                    df.columns = expected_cols[:len(df.columns)]
+                    print(f"Assigned columns: {df.columns.tolist()}")
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     print(f"BERA DataFrame after date conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
-                    # Temporarily relax timestamp check to debug
-                    # if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
-                    #     raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
+                    print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     if df.empty:
@@ -122,11 +123,13 @@ def format_data(files_btc, files_bera, data_provider):
         print("Warning: Partial data processed (one pair missing), proceeding with available data.")
 
     print(f"Skipped files due to errors: {skipped_files}")
+    print(f"price_df_btc rows: {len(price_df_btc)}, columns: {price_df_btc.columns.tolist()}")
+    print(f"price_df_bera rows: {len(price_df_bera)}, columns: {price_df_bera.columns.tolist()}")
     
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")
     price_df = pd.concat([price_df_btc, price_df_bera], axis=1)
-    print(f"Combined DataFrame rows before resampling: {len(price_df)}")
+    print(f"Combined DataFrame rows before resampling: {len(price_df)}, columns: {price_df.columns.tolist()}")
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
