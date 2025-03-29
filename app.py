@@ -1,4 +1,3 @@
-# Done for log return 
 import json
 import os
 import time
@@ -30,7 +29,7 @@ def update_data():
     files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)
     if not files_btc or not files_bera:
         print("Warning: No data files downloaded for one or both pairs. Attempting to proceed with available data.")
-    print(f"Files downloaded - BTC: {len(files_btc)}, BERA: {len(files_bera)}")  # Added for debug
+    print(f"Files downloaded - BTC: {len(files_btc)}, BERA: {len(files_bera)}")
     print("Formatting data...")
     format_data(files_btc, files_bera, DATA_PROVIDER)
     print("Training model...")
@@ -47,8 +46,6 @@ def generate_inference(token):
             raise FileNotFoundError("Model file not found. Please run update first to train the model.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
         return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
-        # Original return kept as comment:
-        # return Response(str(inference), status=200, mimetype='text/plain')  # Returns log return as text
     except Exception as e:
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
 
@@ -63,7 +60,6 @@ def update():
 
 if __name__ == "__main__":
     update_data()
-    # Wait briefly to ensure training completes before starting Flask
     while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
         print("Waiting for model and scaler files to be generated...")
         time.sleep(5)
