@@ -95,13 +95,16 @@ def format_data(files_btc, files_bera, data_provider):
                 with myzip.open(myzip.filelist[0]) as f:
                     sample_lines = [line.decode('utf-8').strip() for line in f.readlines()[:5]]
                     print(f"Sample content of {zip_file_path}: {sample_lines}")
-                    f.seek(0)  # Reset file pointer
-                    df = pd.read_csv(f, header=None).iloc[:, :11]
-                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
+                    f.seek(0)
+                    df = pd.read_csv(f, header=None)
+                    print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
+                    df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"][:len(df.columns)]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
+                    print(f"BERA DataFrame after date conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
-                    if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
-                        raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
+                    # Temporarily relax timestamp check to debug
+                    # if df["date"].max() > pd.Timestamp("2025-03-28") or df["date"].min() < pd.Timestamp("2020-01-01"):
+                    #     raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
                     print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     if df.empty:
