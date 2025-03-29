@@ -91,7 +91,12 @@ def format_data(files_btc, files_bera, data_provider):
                 continue
             try:
                 myzip = ZipFile(zip_file_path)
+                print(f"Opening BERA file: {zip_file_path}, contents: {myzip.namelist()}")
                 with myzip.open(myzip.filelist[0]) as f:
+                    # Read a few lines to debug content
+                    sample_lines = f.readlines()[:5]
+                    print(f"Sample content of {zip_file_path}: {sample_lines}")
+                    f.seek(0)  # Reset file pointer
                     df = pd.read_csv(f, header=None).iloc[:, :11]
                     df.columns = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
