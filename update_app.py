@@ -1,33 +1,32 @@
-# update_app.py - Extended to support BERA log-return feature generation
+# update_app.py - Updated for 1-hour BERA/USD log-return prediction
 
 import pandas as pd
 import numpy as np
 import os
 from datetime import datetime, timedelta
 
-# Original BTC pipeline logic may exist here (not modified)
-
-# --- BERA log-return feature pipeline start ---
-
 def calculate_log_return(current_price, future_price):
     return np.log(future_price / current_price)
 
 def generate_features_bera(data):
-    features = pd.DataFrame()
-
+    # Resample to 1-hour intervals
+    data_1h = data.resample("1h", on="timestamp").agg({"open": "first", "high": "max", "low": "min", "close": "last"})
+    features = pd.DataFrame(index=data_1h.index)
+    
+    # Generate lagged features for BERA/USD
     for col in ["open", "high", "low", "close"]:
         for i in range(1, 11):
-            features[f"{col}_BERAUSDT_lag{i}"] = data[col].shift(i)
-    for col in ["open", "high", "low", "close"]:
-        for i in range(1, 11):
-            features[f"{col}_BTCUSDT_lag{i}"] = data[f"{col}_BTCUSDT"].shift(i)
-
-    features["hour_of_day"] = data["timestamp"].dt.hour
-
-    current = data["close"]
-    future = data["close"].shift(-12)  # 12 * 5min = 60min
+            features[f"{col}_BERAUSDT_lag{i}"] = data_1h[col].shift(i)
+    
+    # Add hour of day as a feature
+    features["hour_of_day"] = data_1h.index.hour
+    
+    # Target: 1-hour log-return
+    current = data_1h["close"]
+    future = data_1h["close"].shift(-1)  # Next 1-hour period
     features["target_BERAUSDT"] = calculate_log_return(current, future)
-
+    
+    # Drop rows with NaN values
     features.dropna(inplace=True)
     return features
 
@@ -43,8 +42,6 @@ def save_features():
     features.to_csv(output_path, index=False)
     print(f"BERA features saved to {output_path}")
 
-# Entry point for new BERA pipeline
+# Entry point
 if __name__ == "__main__":
     save_features()
-
-# --- BERA log-return feature pipeline end ---
