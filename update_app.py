@@ -25,7 +25,7 @@ def generate_features_bera(data):
     features["hour_of_day"] = data["timestamp"].dt.hour
 
     current = data["close"]
-    future = data["close"].shift(-12)  # assuming 5min interval, 12 * 5 = 60min
+    future = data["close"].shift(-12)  # 12 * 5min = 60min
     features["target_BERAUSDT"] = calculate_log_return(current, future)
 
     features.dropna(inplace=True)
