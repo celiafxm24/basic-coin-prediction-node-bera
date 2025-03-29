@@ -74,8 +74,87 @@ def download_binance_daily_data(pair, training_days, region, download_path):
     print(f"Filtered {pair} files: {downloaded_files[:5]}, total: {len(downloaded_files)}")
     return downloaded_files
 
-# Rest of the file (download_binance_current_day_data, get_coingecko_coin_id, etc.) unchanged
-# ...
+def download_binance_current_day_data(pair, region):
+    limit = 1000  # Max per request
+    total_minutes = 10080  # 7 days
+    requests_needed = (total_minutes + limit - 1) // limit  # Ceiling division
+    dfs = []
+    end_time = int(time.time() * 1000)  # Current time in ms
+    
+    for i in range(requests_needed):
+        start_time = end_time - (limit * 60 * 1000)  # Move back 1000 minutes per request
+        url = f'https://api.binance.{region}/api/v3/klines?symbol={pair}&interval=1m&limit={limit}&endTime={end_time}'
+        print(f"Fetching {pair} data batch {i+1}/{requests_needed} from: {url}")
+        response = session.get(url)
+        response.raise_for_status()
+        resp = str(response.content, 'utf-8').rstrip()
+        columns = ['start_time', 'open', 'high', 'low', 'close', 'volume', 'end_time', 'volume_usd', 'n_trades', 'taker_volume', 'taker_volume_usd', 'ignore']
+        df = pd.DataFrame(json.loads(resp), columns=columns)
+        df['date'] = [pd.to_datetime(x+1, unit='ms') for x in df['end_time']]
+        df['date'] = df['date'].apply(pd.to_datetime)
+        df[["volume", "taker_volume", "open", "high", "low", "close"]] = df[["volume", "taker_volume", "open", "high", "low", "close"]].apply(pd.to_numeric)
+        dfs.append(df)
+        end_time = int(df['end_time'].iloc[0]) - 1  # Set next end time to just before the earliest in this batch
+    
+    combined_df = pd.concat(dfs).sort_index()
+    print(f"Total {pair} live data rows fetched: {len(combined_df)}")
+    return combined_df
+
+def get_coingecko_coin_id(token):
+    token_map = {
+        'ETH': 'ethereum',
+        'SOL': 'solana',
+        'BTC': 'bitcoin',
+        'BNB': 'binancecoin',
+        'ARB': 'arbitrum',
+        'BERA': 'bera'  # Added BERA (assumed ID, verify with CoinGecko)
+    }
+    token = token.upper()
+    if token in token_map:
+        return token_map[token]
+    else:
+        raise ValueError("Unsupported token")
+
+def download_coingecko_data(token, training_days, download_path, CG_API_KEY):
+    if training_days <= 7:
+        days = 7
+    elif training_days <= 14:
+        days = 14
+    elif training_days <= 30:
+        days = 30
+    elif training_days <= 90:
+        days = 90
+    elif training_days <= 180:
+        days = 180
+    elif training_days <= 365:
+        days = 365
+    else:
+        days = "max"
+    print(f"Days: {days}")
+    coin_id = get_coingecko_coin_id(token)
+    print(f"Coin ID: {coin_id}")
+    url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days={days}&api_key={CG_API_KEY}'
+    global files
+    files = []
+    with ThreadPoolExecutor() as executor:
+        print(f"Downloading data for {coin_id}")
+        name = os.path.basename(url).split("?")[0].replace("/", "_") + ".json"
+        executor.submit(download_url, url, download_path, name)
+    return files
+
+def download_coingecko_current_day_data(token, CG_API_KEY):
+    coin_id = get_coingecko_coin_id(token)
+    print(f"Coin ID: {coin_id}")
+    url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc?vs_currency=usd&days=1&api_key={CG_API_KEY}'
+    response = session.get(url)
+    response.raise_for_status()
+    resp = str(response.content, 'utf-8').rstrip()
+    columns = ['timestamp', 'open', 'high', 'low', 'close']
+    df = pd.DataFrame(json.loads(resp), columns=columns)
+    df['date'] = [pd.to_datetime(x, unit='ms') for x in df['timestamp']]
+    df['date'] = df['date'].apply(pd.to_datetime)
+    df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].apply(pd.to_numeric)
+    return df.sort_index()
 
 if __name__ == "__main__":
     download_binance_daily_data("BTCUSDT", 180, "us", "data/binance")
