@@ -56,7 +56,7 @@ def daterange(start_date, end_date):
 
 def download_binance_daily_data(pair, training_days, region, download_path):
     base_url = f"https://data.binance.vision/data/spot/daily/klines"
-    end_date = date.today() - timedelta(days=1)
+    end_date = date.today() - timedelta(days=1)  # Up to yesterday to avoid future dates
     start_date = end_date - timedelta(days=int(training_days))
     print(f"Downloading {pair} data from {start_date} to {end_date}")
     
@@ -68,7 +68,12 @@ def download_binance_daily_data(pair, training_days, region, download_path):
             url = f"{base_url}/{pair}/1m/{pair}-1m-{single_date}.zip"
             executor.submit(download_url, url, download_path)
     
-    return files
+    # Filter to only include successfully downloaded files
+    downloaded_files = [os.path.join(download_path, f"{pair}-1m-{d}.zip") 
+                        for d in daterange(start_date, end_date) 
+                        if os.path.exists(os.path.join(download_path, f"{pair}-1m-{d}.zip"))]
+    print(f"Filtered {pair} files: {downloaded_files[:5]}, total: {len(downloaded_files)}")
+    return downloaded_files
 
 def download_binance_current_day_data(pair, region):
     limit = 1000  # Max per request
@@ -103,6 +108,7 @@ def get_coingecko_coin_id(token):
         'BTC': 'bitcoin',
         'BNB': 'binancecoin',
         'ARB': 'arbitrum',
+        'BERA': 'bera'  # Added BERA (assumed ID, verify with CoinGecko)
     }
     token = token.upper()
     if token in token_map:
@@ -150,3 +156,8 @@ def download_coingecko_current_day_data(token, CG_API_KEY):
     df['date'] = df['date'].apply(pd.to_datetime)
     df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].apply(pd.to_numeric)
     return df.sort_index()
+
+if __name__ == "__main__":
+    # Example usage for testing
+    download_binance_daily_data("BTCUSDT", 180, "us", "data/binance")
+    download_binance_daily_data("BERAUSDT", 180, "us", "data/binance")
