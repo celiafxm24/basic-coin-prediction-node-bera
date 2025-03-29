@@ -93,8 +93,7 @@ def format_data(files_btc, files_bera, data_provider):
                 myzip = ZipFile(zip_file_path)
                 print(f"Opening BERA file: {zip_file_path}, contents: {myzip.namelist()}")
                 with myzip.open(myzip.filelist[0]) as f:
-                    # Read a few lines to debug content
-                    sample_lines = f.readlines()[:5]
+                    sample_lines = [line.decode('utf-8').strip() for line in f.readlines()[:5]]
                     print(f"Sample content of {zip_file_path}: {sample_lines}")
                     f.seek(0)  # Reset file pointer
                     df = pd.read_csv(f, header=None).iloc[:, :11]
