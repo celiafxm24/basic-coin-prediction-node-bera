@@ -63,7 +63,7 @@ def generate_inference(token):
         print(f"live_X_scaled shape: {live_X_scaled.shape}")
 
         # Predict on the latest row
-        log_return_prediction = model.predict(live_X_scaled[-1].reshape(1, -1))[0]
+        log_return_prediction = float(model.predict(live_X_scaled[-1].reshape(1, -1))[0])  # Convert to float
         
         # Calculate predicted price
         latest_price = live_df["close_BERAUSDT"].iloc[-1]
@@ -78,7 +78,7 @@ def generate_inference(token):
     except Exception as e:
         print(f"Inference error: {str(e)}")
         return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
-
+        
 @app.route("/update")
 def update():
     try:
