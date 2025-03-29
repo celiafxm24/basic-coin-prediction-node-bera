@@ -342,8 +342,12 @@ def get_inference(token, timeframe, region, data_provider):
         df_btc = download_coingecko_current_day_data("BTC", CG_API_KEY)
         df_bera = download_coingecko_current_day_data("BERA", CG_API_KEY)
     else:
-        df_btc = download_binance_current_day_data("BTCUSDT", region)
-        df_bera = download_binance_current_day_data("BERAUSDT", region)
+        try:
+            df_btc = download_binance_current_day_data("BTCUSDT", region)
+            df_bera = download_binance_current_day_data("BERAUSDT", region)
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching live data: {str(e)} - Response: {e.response.text if e.response else 'No response'}")
+            raise
     
     ticker_url = f'https://api.binance.{region}/api/v3/ticker/price?symbol=BERAUSDT'
     response = requests.get(ticker_url)
@@ -353,7 +357,6 @@ def get_inference(token, timeframe, region, data_provider):
     X_new = preprocess_live_data(df_btc, df_bera)
     log_return_pred = loaded_model.predict(X_new[-1].reshape(1, -1))[0]
     
-    # Calculate predicted price for logging purposes only
     predicted_price = latest_price * np.exp(log_return_pred)
     
     print(f"Predicted 1h BERA/USD Log Return: {log_return_pred:.6f}")
