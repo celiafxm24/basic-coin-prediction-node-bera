@@ -104,7 +104,7 @@ def format_data(files_btc, files_bera, data_provider):
                 skipped_files.append(file)
                 continue
 
-    if price_df_btc.empty and price_df_bera.empty:  # Changed to check both empty
+    if price_df_btc.empty and price_df_bera.empty:
         print("No data processed for BTCUSDT or BERAUSDT, cannot proceed.")
         return
     elif price_df_btc.empty or price_df_bera.empty:
@@ -115,6 +115,7 @@ def format_data(files_btc, files_bera, data_provider):
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
     price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")
     price_df = pd.concat([price_df_btc, price_df_bera], axis=1)
+    print(f"Combined DataFrame rows before resampling: {len(price_df)}")  # Debug
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
@@ -122,6 +123,7 @@ def format_data(files_btc, files_bera, data_provider):
             for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
         })
+        print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")  # Debug
 
     for pair in ["BERAUSDT", "BTCUSDT"]:
         price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
@@ -131,10 +133,13 @@ def format_data(files_btc, files_bera, data_provider):
 
     price_df["hour_of_day"] = price_df.index.hour
     price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
-    price_df = price_df.dropna()
+    print(f"Rows before dropna: {len(price_df)}")  # Debug
+    price_df = price_df.dropna(subset=["target_BERAUSDT"])  # Only drop rows missing the target
+    print(f"Rows after dropna: {len(price_df)}")  # Debug
     
     if len(price_df) == 0:
-        print("No data remains after preprocessing. Check data availability or timeframe.")
+        print("No data remains after preprocessing target dropna. Saving partial data anyway.")
+        price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
         return
 
     price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
