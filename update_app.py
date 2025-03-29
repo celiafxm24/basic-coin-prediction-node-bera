@@ -1,5 +1,3 @@
-# update_app.py - Updated for 1-hour BERA/USD log-return prediction
-
 import pandas as pd
 import numpy as np
 import os
@@ -9,24 +7,23 @@ def calculate_log_return(current_price, future_price):
     return np.log(future_price / current_price)
 
 def generate_features_bera(data):
-    # Resample to 1-hour intervals
     data_1h = data.resample("1h", on="timestamp").agg({"open": "first", "high": "max", "low": "min", "close": "last"})
     features = pd.DataFrame(index=data_1h.index)
     
-    # Generate lagged features for BERA/USD
+    # Lagged features
     for col in ["open", "high", "low", "close"]:
         for i in range(1, 11):
             features[f"{col}_BERAUSDT_lag{i}"] = data_1h[col].shift(i)
     
-    # Add hour of day as a feature
+    # New features
+    features["log_return_BERAUSDT"] = calculate_log_return(data_1h["close"], data_1h["close"].shift(-1))
+    features["volatility_BERAUSDT"] = features["log_return_BERAUSDT"].rolling(window=5).std()
+    features["momentum_BERAUSDT"] = data_1h["close"] - data_1h["close"].shift(5)
+    # Note: btc_bera_corr requires BTC data, which isn’t available here; skip it
+    
     features["hour_of_day"] = data_1h.index.hour
+    features["target_BERAUSDT"] = features["log_return_BERAUSDT"]
     
-    # Target: 1-hour log-return
-    current = data_1h["close"]
-    future = data_1h["close"].shift(-1)  # Next 1-hour period
-    features["target_BERAUSDT"] = calculate_log_return(current, future)
-    
-    # Drop rows with NaN values
     features.dropna(inplace=True)
     return features
 
@@ -42,6 +39,5 @@ def save_features():
     features.to_csv(output_path, index=False)
     print(f"BERA features saved to {output_path}")
 
-# Entry point
 if __name__ == "__main__":
     save_features()
