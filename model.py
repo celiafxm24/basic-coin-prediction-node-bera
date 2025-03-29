@@ -1,4 +1,3 @@
-# XGB for BERAUSD done
 import json
 import os
 import pickle
