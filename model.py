@@ -39,26 +39,24 @@ def download_data(token, training_days, region, data_provider):
     else:
         raise ValueError("Unsupported data provider")
 
-def format_data(files_btc, files_bera, data_provider):  # Changed files_eth to files_bera
+def format_data(files_btc, files_bera, data_provider):
     print(f"Raw files for BTCUSDT: {files_btc[:5]}")
-    print(f"Raw files for BERAUSDT: {files_bera[:5]}")  # Updated to BERA
+    print(f"Raw files for BERAUSDT: {files_bera[:5]}")
     print(f"Files for BTCUSDT: {len(files_btc)}, Files for BERAUSDT: {len(files_bera)}")
     if not files_btc or not files_bera:
-        print("No files provided for BTCUSDT or BERAUSDT, exiting format_data")
-        return
+        print("Warning: No files provided for BTCUSDT or BERAUSDT, attempting to proceed with available data.")
     
     if data_provider == "binance":
         files_btc = sorted([f for f in files_btc if "BTCUSDT" in os.path.basename(f) and f.endswith(".zip")])
-        files_bera = sorted([f for f in files_bera if "BERAUSDT" in os.path.basename(f) and f.endswith(".zip")])  # Updated to BERA
+        files_bera = sorted([f for f in files_bera if "BERAUSDT" in os.path.basename(f) and f.endswith(".zip")])
         print(f"Filtered BTCUSDT files: {files_btc[:5]}")
         print(f"Filtered BERAUSDT files: {files_bera[:5]}")
 
     if len(files_btc) == 0 or len(files_bera) == 0:
-        print("No valid files to process for BTCUSDT or BERAUSDT after filtering")
-        return
+        print("Warning: No valid files to process for BTCUSDT or BERAUSDT after filtering, proceeding with available data.")
 
     price_df_btc = pd.DataFrame()
-    price_df_bera = pd.DataFrame()  # Changed price_df_eth to price_df_bera
+    price_df_bera = pd.DataFrame()
     skipped_files = []
 
     if data_provider == "binance":
@@ -84,7 +82,7 @@ def format_data(files_btc, files_bera, data_provider):  # Changed files_eth to f
                 skipped_files.append(file)
                 continue
 
-        for file in files_bera:  # Changed files_eth to files_bera
+        for file in files_bera:
             zip_file_path = os.path.join(binance_data_path, os.path.basename(file))
             if not os.path.exists(zip_file_path):
                 print(f"File not found: {zip_file_path}")
@@ -99,39 +97,40 @@ def format_data(files_btc, files_bera, data_provider):  # Changed files_eth to f
                     if df["date"].max() > pd.Timestamp("2026-01-01") or df["date"].min() < pd.Timestamp("2020-01-01"):
                         raise ValueError(f"Timestamps out of expected range in {file}: min {df['date'].min()}, max {df['date'].max()}")
                     df.set_index("date", inplace=True)
-                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")  # Updated to BERA
+                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
                     price_df_bera = pd.concat([price_df_bera, df])
             except Exception as e:
                 print(f"Error processing {file}: {str(e)}")
                 skipped_files.append(file)
                 continue
 
-    if price_df_btc.empty or price_df_bera.empty:
-        print("No data processed for BTCUSDT or BERAUSDT")
-        print(f"BTC DataFrame rows: {len(price_df_btc)}, BERA DataFrame rows: {len(price_df_bera)}")
+    if price_df_btc.empty and price_df_bera.empty:  # Changed to check both empty
+        print("No data processed for BTCUSDT or BERAUSDT, cannot proceed.")
         return
+    elif price_df_btc.empty or price_df_bera.empty:
+        print("Warning: Partial data processed (one pair missing), proceeding with available data.")
 
     print(f"Skipped files due to errors: {skipped_files}")
     
     price_df_btc = price_df_btc.rename(columns=lambda x: f"{x}_BTCUSDT")
-    price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")  # Changed ETHUSDT to BERAUSDT
+    price_df_bera = price_df_bera.rename(columns=lambda x: f"{x}_BERAUSDT")
     price_df = pd.concat([price_df_btc, price_df_bera], axis=1)
 
     if TIMEFRAME != "1m":
         price_df = price_df.resample(TIMEFRAME).agg({
             f"{metric}_{pair}": "last" 
-            for pair in ["BERAUSDT", "BTCUSDT"]  # Updated to BERAUSDT
+            for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
         })
 
-    for pair in ["BERAUSDT", "BTCUSDT"]:  # Updated to BERAUSDT
+    for pair in ["BERAUSDT", "BTCUSDT"]:
         price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
     price_df["hour_of_day"] = price_df.index.hour
-    price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]  # Updated target to BERAUSDT
+    price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
     price_df = price_df.dropna()
     
     if len(price_df) == 0:
