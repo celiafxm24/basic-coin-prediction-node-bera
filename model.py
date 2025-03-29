@@ -98,16 +98,19 @@ def format_data(files_btc, files_bera, data_provider):
                     f.seek(0)
                     df = pd.read_csv(f, header=None)
                     print(f"Raw BERA DataFrame from {file}: rows={len(df)}, columns={df.columns.tolist()}")
-                    # Dynamically assign columns based on available data
+                    # Robust column handling
                     expected_cols = ["start_time", "open", "high", "low", "close", "volume", "end_time", "volume_usd", "n_trades", "taker_volume", "taker_volume_usd"]
-                    df.columns = expected_cols[:len(df.columns)]
+                    n_cols = min(len(df.columns), len(expected_cols))
+                    df.columns = expected_cols[:n_cols]
                     print(f"Assigned columns: {df.columns.tolist()}")
+                    # Debug raw end_time values
+                    print(f"Raw end_time sample: {df['end_time'].iloc[:5].tolist()}")
                     df["date"] = pd.to_datetime(df["end_time"], unit="ms", errors='coerce')
                     print(f"BERA DataFrame after date conversion: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
                     df = df.dropna(subset=["date"])
-                    print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist()}")
+                    print(f"BERA DataFrame after dropna: rows={len(df)}, sample dates={df['date'].iloc[:5].tolist() if not df.empty else '[]'}")
                     df.set_index("date", inplace=True)
-                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist()}")
+                    print(f"Processed BERA file {file} with {len(df)} rows, sample dates: {df.index[:5].tolist() if not df.empty else '[]'}")
                     if df.empty:
                         print(f"BERA file {file} is empty after processing")
                     price_df_bera = pd.concat([price_df_bera, df])
