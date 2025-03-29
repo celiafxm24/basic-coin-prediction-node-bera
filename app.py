@@ -1,33 +1,72 @@
-# app.py - Updated for 1-hour BERA/USD log-return prediction
-
-from flask import Flask, jsonify
-import numpy as np
-import pandas as pd
-import xgboost as xgb
+# Done for log return 
+import json
 import os
-import joblib
+import time
+from flask import Flask, Response
+from model import download_data, format_data, train_model, get_inference
+from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
 
 app = Flask(__name__)
 
-# BERA model configuration
-MODEL_PATH_BERA = os.getenv("MODEL_PATH", "data/model_bera.pkl")
-FEATURES_PATH_BERA = os.getenv("FEATURES_PATH", "data/features_bera.csv")
+def update_data():
+    print("Starting data update process...")
+    # Clear all data to force refresh
+    data_dir = os.path.join(os.getcwd(), "data", "binance")
+    price_data_file = os.path.join(os.getcwd(), "data", "price_data.csv")
+    model_file = model_file_path
+    scaler_file = scaler_file_path
+    for path in [data_dir, price_data_file, model_file, scaler_file]:
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                for f in os.listdir(path):
+                    os.remove(os.path.join(path, f))
+            else:
+                os.remove(path)
+            print(f"Cleared {path}")
+    
+    print("Downloading BTC data...")
+    files_btc = download_data("BTC", TRAINING_DAYS, REGION, DATA_PROVIDER)
+    print("Downloading BERA data...")  # Changed from ETH to BERA
+    files_bera = download_data("BERA", TRAINING_DAYS, REGION, DATA_PROVIDER)  # Changed from ETH to BERA
+    if not files_btc or not files_bera:
+        print("No data files downloaded. Skipping format_data and training.")
+        return
+    print("Formatting data...")
+    format_data(files_btc, files_bera, DATA_PROVIDER)  # Updated to use files_bera
+    print("Training model...")
+    train_model(TIMEFRAME)
+    print("Data update and training completed.")
 
-@app.route("/inference/BERA", methods=["GET"])
-def apiAdapter():
+@app.route("/inference/<string:token>")
+def generate_inference(token):
+    if not token or token.upper() != TOKEN:
+        error_msg = "Token is required" if not token else f"Token {token} not supported, expected {TOKEN}"
+        return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
     try:
-        model = joblib.load(MODEL_PATH_BERA)
-        df = pd.read_csv(FEATURES_PATH_BERA)
-        X = df.drop(columns=["target_BERAUSDT"])
-        y_pred = model.predict(X)
-        return jsonify({"log_return_prediction": float(y_pred[-1])})  # Return latest 1-hour log-return prediction
+        if not os.path.exists(model_file_path):
+            raise FileNotFoundError("Model file not found. Please run update first to train the model.")
+        inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
+        # Modified to return JSON like your current app.py, but kept original text option commented
+        return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
+        # Original return kept as comment:
+        # return Response(str(inference), status=200, mimetype='text/plain')  # Returns log return as text
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
 
-# Original BTC endpoint preserved as deprecated
-@app.route("/inference/BTC", methods=["GET"])
-def btcAdapter():
-    return jsonify({"message": "BTC/USD endpoint is deprecated or unused in BERA context."})
+@app.route("/update")
+def update():
+    try:
+        update_data()
+        return "0"
+    except Exception as e:
+        print(f"Update failed: {str(e)}")
+        return "1"
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    update_data()
+    # Wait briefly to ensure training completes before starting Flask
+    while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
+        print("Waiting for model and scaler files to be generated...")
+        time.sleep(5)
+    print("Starting Flask server...")
+    app.run(host="0.0.0.0", port=8000)  # Removed debug=True to match original
