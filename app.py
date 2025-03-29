@@ -1,36 +1,31 @@
-from flask import Flask, request, jsonify
+# Updated app.py for BERA/USD log-return prediction
+from flask import Flask, jsonify
+import numpy as np
+import pandas as pd
+import xgboost as xgb
 import os
 import joblib
-import xgboost as xgb
-import pandas as pd
 
 app = Flask(__name__)
 
-# Use environment variable TOKEN (default to BTC if not provided)
-TOKEN = os.environ.get('TOKEN', 'BTC').upper()
+MODEL_PATH = os.getenv("MODEL_PATH", "data/model_bera.pkl")
+FEATURES_PATH = os.getenv("FEATURES_PATH", "data/features_bera.csv")
 
-# Load the appropriate model based on TOKEN
-if TOKEN == 'BERA':
-    model = joblib.load('model_bera.pkl')  # New BERA model
-else:
-    model = joblib.load('model.pkl')         # Original BTC model
+@app.route("/inference/BERA", methods=["GET"])
+def apiAdapter():
+    try:
+        model = joblib.load(MODEL_PATH)
+        df = pd.read_csv(FEATURES_PATH)
+        X = df.drop(columns=["target_BERAUSDT"])
+        y_pred = model.predict(X)
+        return jsonify({"log_return_prediction": float(y_pred[-1])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/inference/<token>', methods=['POST'])
-def inference(token):
-    token = token.upper()
-    data = request.get_json(force=True)
-    
-    # Convert input JSON into a DataFrame.
-    # For BERA predictions, we expect 81 features:
-    # 40 features for BERA (open, high, low, close lags 1-10),
-    # 40 features for BTC (open, high, low, close lags 1-10), plus 'hour_of_day'
-    df = pd.DataFrame([data])
-    
-    # Create a DMatrix for XGBoost prediction
-    dmatrix = xgb.DMatrix(df)
-    pred = model.predict(dmatrix)
-    
-    return jsonify({"prediction": float(pred[0])})
+# Original BTC endpoint (not deleted)
+@app.route("/inference/BTC", methods=["GET"])
+def btcAdapter():
+    return jsonify({"message": "BTC/USD endpoint is deprecated or unused in BERA context."})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)
+    app.run(debug=True, host="0.0.0.0", port=8000)
