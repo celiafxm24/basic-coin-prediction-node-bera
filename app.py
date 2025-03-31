@@ -39,14 +39,15 @@ def update_data():
 def generate_inference(token):
     if not token or token.upper() != TOKEN:
         error_msg = "Token is required" if not token else f"Token {token} not supported, expected {TOKEN}"
-        return Response(json.dumps({"error": error_msg}), status=400, mimetype='application/json')
+        return Response(error_msg, status=400, mimetype='text/plain')
     try:
         if not os.path.exists(model_file_path):
             raise FileNotFoundError("Model file not found. Please run update first to train the model.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        return Response(json.dumps({"log_return_prediction": float(inference)}), status=200, mimetype='application/json')
+        # Return the raw float value as plain text
+        return Response(str(inference), status=200, mimetype='text/plain')
     except Exception as e:
-        return Response(json.dumps({"error": str(e)}), status=500, mimetype='application/json')
+        return Response(str(e), status=500, mimetype='text/plain')
 
 @app.route("/update")
 def update():
