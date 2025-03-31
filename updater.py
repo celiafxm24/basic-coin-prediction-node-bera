@@ -76,7 +76,7 @@ def download_binance_daily_data(pair, training_days, region, download_path):
 
 def download_binance_current_day_data(pair, region):
     limit = 1000
-    total_minutes = 10080  # 7 days
+    total_minutes = 10080
     requests_needed = (total_minutes + limit - 1) // limit
     dfs = []
     end_time = int(time.time() * 1000)
