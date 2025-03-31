@@ -9,7 +9,6 @@ app = Flask(__name__)
 
 def update_data():
     print("Starting data update process...")
-    # Clear all data to force refresh
     data_dir = os.path.join(os.getcwd(), "data", "binance")
     price_data_file = os.path.join(os.getcwd(), "data", "price_data.csv")
     model_file = model_file_path
