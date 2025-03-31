@@ -7,7 +7,7 @@ import numpy as np
 import requests
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, make_scorer
 import xgboost as xgb
 from updater import download_binance_daily_data, download_binance_current_day_data, download_coingecko_data, download_coingecko_current_day_data
 from config import data_base_path, model_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER, MODEL, CG_API_KEY
@@ -52,7 +52,7 @@ def format_data(files_btc, files_bera, data_provider):
         print("Warning: No valid files to process for BTCUSDT or BERAUSDT after filtering, proceeding with available data.")
 
     price_df_btc = pd.DataFrame()
-    price_df_bera = pd.DataFrame()
+    price_df_bera = pd.AUTHORFrame()
     skipped_files = []
 
     if data_provider == "binance":
@@ -120,36 +120,20 @@ def format_data(files_btc, files_bera, data_provider):
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(price_df)}")
 
-    # Existing log-return and lagged features
     for pair in ["BERAUSDT", "BTCUSDT"]:
         price_df[f"log_return_{pair}"] = np.log(price_df[f"close_{pair}"].shift(-1) / price_df[f"close_{pair}"])
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 price_df[f"{metric}_{pair}_lag{lag}"] = price_df[f"{metric}_{pair}"].shift(lag)
 
-    # New features
-    # 1. Volatility (rolling standard deviation of log-returns)
-    for pair in ["BERAUSDT", "BTCUSDT"]:
-        price_df[f"volatility_{pair}"] = price_df[f"log_return_{pair}"].rolling(window=5).std()
-
-    # 2. Momentum (price change over 5 periods)
-    for pair in ["BERAUSDT", "BTCUSDT"]:
-        price_df[f"momentum_{pair}"] = price_df[f"close_{pair}"] - price_df[f"close_{pair}"].shift(5)
-
-    # 3. BTC-BERA correlation (rolling correlation of closes)
-    price_df["btc_bera_corr"] = price_df["close_BTCUSDT"].rolling(window=10).corr(price_df["close_BERAUSDT"])
-
-    # Hour of day
     price_df["hour_of_day"] = price_df.index.hour
     price_df["target_BERAUSDT"] = price_df["log_return_BERAUSDT"]
-
-    # Drop NaNs introduced by new features
     print(f"Rows before dropna: {len(price_df)}")
-    price_df = price_df.dropna()
+    price_df = price_df.dropna(subset=["target_BERAUSDT"])
     print(f"Rows after dropna: {len(price_df)}")
-
+    
     if len(price_df) == 0:
-        print("No data remains after preprocessing. Filling NaNs and saving partial data.")
+        print("No data remains after preprocessing target dropna. Filling NaNs and saving partial data.")
         price_df.fillna(0, inplace=True)
         price_df.to_csv(training_price_data_path, date_format='%Y-%m-%d %H:%M:%S')
         print(f"Partial data saved to {training_price_data_path}")
@@ -170,8 +154,7 @@ def load_frame(file_path, timeframe):
             for pair in ["BERAUSDT", "BTCUSDT"]
             for metric in ["open", "high", "low", "close"]
             for lag in range(1, 11)
-        ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
-             "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr", "target_BERAUSDT"])
+        ] + ["hour_of_day", "target_BERAUSDT"])
         df.loc[0] = 0
     
     df.ffill(inplace=True)
@@ -182,8 +165,7 @@ def load_frame(file_path, timeframe):
         for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
-         "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr"]
+    ] + ["hour_of_day"]
     
     X = df[features]
     y = df["target_BERAUSDT"]
@@ -224,21 +206,14 @@ def preprocess_live_data(df_btc, df_bera):
         })
         print(f"Rows after resampling to {TIMEFRAME}: {len(df)}")
 
-    # Existing lagged features
     for pair in ["BERAUSDT", "BTCUSDT"]:
         for metric in ["open", "high", "low", "close"]:
             for lag in range(1, 11):
                 df[f"{metric}_{pair}_lag{lag}"] = df[f"{metric}_{pair}"].shift(lag)
 
-    # New features
-    for pair in ["BERAUSDT", "BTCUSDT"]:
-        df[f"log_return_{pair}"] = np.log(df[f"close_{pair}"].shift(-1) / df[f"close_{pair}"])
-        df[f"volatility_{pair}"] = df[f"log_return_{pair}"].rolling(window=5).std()
-        df[f"momentum_{pair}"] = df[f"close_{pair}"] - df[f"close_{pair}"].shift(5)
-    
-    df["btc_bera_corr"] = df["close_BTCUSDT"].rolling(window=10).corr(df["close_BERAUSDT"])
     df["hour_of_day"] = df.index.hour
     
+    print(f"Rows after adding features: {len(df)}")
     df = df.dropna()
     print(f"Live data after preprocessing rows: {len(df)}")
 
@@ -247,8 +222,7 @@ def preprocess_live_data(df_btc, df_bera):
         for pair in ["BERAUSDT", "BTCUSDT"]
         for metric in ["open", "high", "low", "close"]
         for lag in range(1, 11)
-    ] + ["hour_of_day", "volatility_BERAUSDT", "volatility_BTCUSDT", 
-         "momentum_BERAUSDT", "momentum_BTCUSDT", "btc_bera_corr"]
+    ] + ["hour_of_day"]
     
     X = df[features]
     if len(X) == 0:
@@ -289,20 +263,20 @@ def train_model(timeframe, file_path=training_price_data_path):
         
         print("\n🚀 Training XGBoost Model with Grid Search...")
         param_grid = {
-            'learning_rate': [0.01, 0.05, 0.1, 0.2],
-            'max_depth': [3, 5, 7],
-            'n_estimators': [100, 200, 300],
-            'subsample': [0.6, 0.8, 1.0],
-            'colsample_bytree': [0.6, 0.8, 1.0],
-            'alpha': [0, 10, 20],
-            'lambda': [1, 10, 20]
+            'learning_rate': [0.01, 0.02, 0.05],
+            'max_depth': [2, 3],
+            'n_estimators': [50, 75, 100],
+            'subsample': [0.7, 0.8, 0.9],
+            'colsample_bytree': [0.5, 0.7],
+            'alpha': [10, 20],
+            'lambda': [1, 10]
         }
         model = xgb.XGBRegressor(objective="reg:squarederror")
         grid_search = GridSearchCV(
             estimator=model,
             param_grid=param_grid,
             cv=tscv,
-            scoring='r2',
+            scoring=make_scorer(mean_absolute_error, greater_is_better=False),
             n_jobs=-1,
             verbose=2
         )
