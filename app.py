@@ -44,8 +44,8 @@ def generate_inference(token):
         if not os.path.exists(model_file_path):
             raise FileNotFoundError("Model file not found. Please run update first to train the model.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        # Return the raw float value as plain text
-        return Response(str(inference), status=200, mimetype='text/plain')
+        # Return the full-precision float value as plain text
+        return Response(f"{inference:.16f}", status=200, mimetype='text/plain')
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
 
