@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from threading import Thread
 from flask import Flask, Response
 from model import download_data, format_data, train_model, get_inference
 from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING_DAYS, REGION, DATA_PROVIDER
@@ -8,7 +9,7 @@ from config import model_file_path, scaler_file_path, TOKEN, TIMEFRAME, TRAINING
 app = Flask(__name__)
 
 def update_data():
-    print("Starting data update process...")
+    print("Starting data update process in background...")
     data_dir = os.path.join(os.getcwd(), "data", "binance")
     price_data_file = os.path.join(os.getcwd(), "data", "price_data.csv")
     model_file = model_file_path
@@ -42,9 +43,8 @@ def generate_inference(token):
         return Response(error_msg, status=400, mimetype='text/plain')
     try:
         if not os.path.exists(model_file_path):
-            raise FileNotFoundError("Model file not found. Please run update first to train the model.")
+            raise FileNotFoundError("Model file not found. Please wait for initial training to complete.")
         inference = get_inference(token.upper(), TIMEFRAME, REGION, DATA_PROVIDER)
-        # Return the full-precision float value as plain text
         return Response(f"{inference:.16f}", status=200, mimetype='text/plain')
     except Exception as e:
         return Response(str(e), status=500, mimetype='text/plain')
@@ -52,16 +52,15 @@ def generate_inference(token):
 @app.route("/update")
 def update():
     try:
-        update_data()
+        Thread(target=update_data).start()  # Run update in background
         return "0"
     except Exception as e:
         print(f"Update failed: {str(e)}")
         return "1"
 
 if __name__ == "__main__":
-    update_data()
-    while not os.path.exists(model_file_path) or not os.path.exists(scaler_file_path):
-        print("Waiting for model and scaler files to be generated...")
-        time.sleep(5)
+    # Start initial data update in a separate thread
+    Thread(target=update_data).start()
+    # Start Flask server immediately without waiting for training
     print("Starting Flask server...")
     app.run(host="0.0.0.0", port=8000)
