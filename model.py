@@ -52,7 +52,7 @@ def format_data(files_btc, files_bera, data_provider):
         print("Warning: No valid files to process for BTCUSDT or BERAUSDT after filtering, proceeding with available data.")
 
     price_df_btc = pd.DataFrame()
-    price_df_bera = pd.AUTHORFrame()
+    price_df_bera = pd.DataFrame()  # Fixed typo: AUTHORFrame -> DataFrame
     skipped_files = []
 
     if data_provider == "binance":
