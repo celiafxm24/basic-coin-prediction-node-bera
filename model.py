@@ -188,12 +188,10 @@ def preprocess_live_data(df_btc, df_bera):
     print(f"BERA raw data rows: {len(df_bera)}, columns: {df_bera.columns.tolist()}")
 
     if "date" in df_btc.columns:
-        # Remove duplicate timestamps, keeping the last entry
         df_btc = df_btc.drop_duplicates(subset="date", keep="last").set_index("date")
         if df_btc.index.has_duplicates:
             print(f"Warning: BTC data still has {df_btc.index.duplicated().sum()} duplicate timestamps after deduplication")
     if "date" in df_bera.columns:
-        # Remove duplicate timestamps, keeping the last entry
         df_bera = df_bera.drop_duplicates(subset="date", keep="last").set_index("date")
         if df_bera.index.has_duplicates:
             print(f"Warning: BERA data still has {df_bera.index.duplicated().sum()} duplicate timestamps after deduplication")
