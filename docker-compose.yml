@@ -22,31 +22,18 @@ services:
     environment:
       - INFERENCE_API_ADDRESS=http://inference:8000
     command: >
-      sh -c "
-      # Wait for price_data.csv to be available and copy it to raw_bera.csv
-      while [ ! -f /app/data/price_data.csv ]; do
-        echo 'Waiting for price_data.csv...';
-        sleep 10;
-      done;
-      cp /app/data/price_data.csv /app/data/raw_bera.csv;
-      echo 'Copied price_data.csv to raw_bera.csv';
-      # Run the update loop
-      while true; do
-        python -u /app/update_app.py;
-        sleep 2h;
-      done
-      "
+      sh -c "while [ ! -f /app/data/price_data.csv ]; do echo 'Waiting for price_data.csv...'; sleep 10; done && cp /app/data/price_data.csv /app/data/raw_bera.csv && echo 'Copied price_data.csv to raw_bera.csv' && while true; do python -u /app/update_app.py; sleep 2h; done"
     depends_on:
       inference:
         condition: service_healthy
     volumes:
-      - ./inference-data:/app/data  # Share the same volume as inference
+      - ./inference-data:/app/data
 
   worker:
     container_name: worker
     image: alloranetwork/allora-offchain-node:v0.9.1
     volumes:
-      - ./worker-data:/data
+      - ./worker-data:/app/data
     depends_on:
       inference:
         condition: service_healthy
