@@ -11,6 +11,5 @@ RUN pip install --upgrade pip setuptools \
 FROM project_env
 
 COPY . /app/
-RUN chmod +x /app/updater.sh  # Make the script executable
 
 CMD ["gunicorn", "--conf", "/app/gunicorn_conf.py", "main:app"]
