@@ -9,10 +9,10 @@ services:
       - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://inference:8000/inference/${TOKEN}"]
-      interval: 30s          # Check every 30 seconds (increased from 10s)
-      timeout: 10s          # Allow 10 seconds for response (increased from 5s)
-      retries: 20           # Retry 20 times (increased from 12, total 600s = 10 minutes)
-      start_period: 120s    # Wait 2 minutes before starting checks
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
     volumes:
       - ./inference-data:/app/data
   
@@ -23,6 +23,14 @@ services:
       - INFERENCE_API_ADDRESS=http://inference:8000
     command: >
       sh -c "
+      # Wait for price_data.csv to be available and copy it to raw_bera.csv
+      while [ ! -f /app/data/price_data.csv ]; do
+        echo 'Waiting for price_data.csv...';
+        sleep 10;
+      done;
+      cp /app/data/price_data.csv /app/data/raw_bera.csv;
+      echo 'Copied price_data.csv to raw_bera.csv';
+      # Run the update loop
       while true; do
         python -u /app/update_app.py;
         sleep 2h;
@@ -31,6 +39,8 @@ services:
     depends_on:
       inference:
         condition: service_healthy
+    volumes:
+      - ./inference-data:/app/data  # Share the same volume as inference
 
   worker:
     container_name: worker
