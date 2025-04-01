@@ -36,6 +36,10 @@ def update_data():
     train_model(TIMEFRAME)
     print("Data update and training completed.")
 
+@app.route("/health")
+def health_check():
+    return Response("OK", status=200, mimetype='text/plain')
+
 @app.route("/inference/<string:token>")
 def generate_inference(token):
     if not token or token.upper() != TOKEN:
@@ -52,15 +56,13 @@ def generate_inference(token):
 @app.route("/update")
 def update():
     try:
-        Thread(target=update_data).start()  # Run update in background
+        Thread(target=update_data).start()
         return "0"
     except Exception as e:
         print(f"Update failed: {str(e)}")
         return "1"
 
 if __name__ == "__main__":
-    # Start initial data update in a separate thread
     Thread(target=update_data).start()
-    # Start Flask server immediately without waiting for training
     print("Starting Flask server...")
     app.run(host="0.0.0.0", port=8000)
